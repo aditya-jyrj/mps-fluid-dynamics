@@ -1,0 +1,3 @@
+- tt-svd: converts a tensor of dimension n into an MPS. written using numpy to test my understanding of SVD.
+- dmrg: to test my understanding of dmrg
+- diffusion: project proper. using tensor network techniques to model fluid dynamics
