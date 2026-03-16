@@ -5,9 +5,25 @@ import matplotlib.pyplot as plt
 import quimb.tensor as qtn
 import time
 
-# ============
-# DENSE SOLVER
-# ============
+# ========================
+# OPERATOR-BASED EVOLUTION
+# ========================
+
+# laplacian_1d returns a laplacian matrix, calling one of the following 4 helper functions
+# depending on whether boundary condition is dirichlet or periodic, and if the format required
+# is a dense matrix (ie all 0s are stored) or sparse matrix
+
+def laplacian_1d(N, dx, bc="dirichlet", fmt="dense"):
+    if bc == "periodic" and fmt == "dense":
+        return laplacian_1d_dense_periodic(N, dx)
+    elif bc == "dirichlet" and fmt == "dense":
+        return laplacian_1d_dense_dirichlet(N, dx)
+    elif bc == "periodic" and fmt == "sparse":
+        return laplacian_1d_sparse_periodic(N, dx)
+    elif bc == "dirichlet" and fmt == "sparse":
+        return laplacian_1d_sparse_dirichlet(N, dx)
+    else:
+        raise ValueError("bc must be 'periodic' or 'dirichlet', fmt must be 'dense' or 'sparse'")
 
 def laplacian_1d_dense_periodic(N, dx):
     L = np.zeros((N, N))
@@ -17,7 +33,7 @@ def laplacian_1d_dense_periodic(N, dx):
         L[i, (i + 1) % N] = 1.0
     return L / (dx * dx)
 
-def laplacian_1d_dense(N, dx):
+def laplacian_1d_dense_dirichlet(N, dx):
     L = np.zeros((N, N))
     for i in range(N):
         L[i, i] = -2.0
@@ -27,17 +43,40 @@ def laplacian_1d_dense(N, dx):
             L[i, i+1] = 1.0
     return L / (dx * dx)
 
-def laplacian_1d_sparse(N, dx):
-    main = -2 * np.ones(N)
-    off  = 1 * np.ones(N - 1)
+def laplacian_1d_sparse_periodic(N, dx):
+    main = -2.0 * np.ones(N)
+    off  = 1.0 * np.ones(N - 1)
+    wrap = 1.0 * np.ones(1)
     L = sp.diags(
-        [off, main, off],
-        offsets=[-1, 0, 1],
+        [wrap, off, main, off, wrap],
+        offsets=[-(N - 1), -1, 0, 1, N - 1],
+        shape=(N, N),
         format="csr"
     )
     return L / (dx * dx)
 
-def evolve_dense_complex(u0, steps, A1, A2, dt, save_every=50):
+def laplacian_1d_sparse_dirichlet(N, dx):
+    main = -2.0 * np.ones(N)
+    off  = 1.0 * np.ones(N - 1)
+    L = sp.diags(
+        [off, main, off],
+        offsets=[-1, 0, 1],
+        shape=(N, N),
+        format="csr"
+    )
+    return L / (dx * dx)
+
+
+
+
+# the following two functions, evolve_operator_lpe2 and evolve_operator_euler, both execute time evolution
+# save_every defines how frequently we want to save snapshots of the evolution (eg every 50 timestep advancements)
+# based on this, both functions return three numpy arrays:
+# 1. np.array(times): the time = steps * dt at each snapshot
+# 2. np.array(saved): the function at the time of the snapshot, discretised into a vector of N elements separated by width dx
+# 3. np.array(norms): the euclidean norm of the vector at each snapshot (helps to compare error) 
+
+def evolve_operator_lpe2(u0, steps, A1, A2, dt, save_every=50):
     u = u0.copy()
 
     saved = []
@@ -65,7 +104,8 @@ def evolve_dense_complex(u0, steps, A1, A2, dt, save_every=50):
     
     return np.array(times), np.array(saved), np.array(norms)
 
-def evolve_dense(u0, steps, A, dt, save_every=50):
+
+def evolve_operator_euler(u0, steps, A, dt, save_every=50):
     u = u0.copy()
 
     saved = []
