@@ -138,54 +138,45 @@ def evolve_operator_euler(u0, steps, A, dt, save_every=50):
 # MPS/MPO GENERATION
 # ==================
 
-# these helper functions convert from vectors to MPS and vice versa,
-# as well as from matrices to MPOs
+# these functions permit the following conversions:
+# 1. vector <-> MPS
+# 2. matrix  -> MPO
 
-def vec_to_qtt_mps(u, n, cutoff=1e-10, max_bond=64):
-    T = u.reshape((2,) * n)
-    mps = qtn.MatrixProductState.from_dense(T, cutoff=cutoff, max_bond=max_bond)
-    return mps
+# lsb_first means "least significant bit first".
+# if True, the least significant bit is mapped to the first MPS site rather than the last.
+# this makes the manual construction of shift MPOs more intuitive as carry/borrow propagation then runs left to right.
 
-def qtt_mps_to_vec(mps):
-    T = mps.to_dense()
-    return np.asarray(T).reshape(-1)
 
-def mat_to_qtt_mpo(A, n, cutoff=1e-12, max_bond=256):
+def vec_to_qtt_mps(u, n, mps_cutoff=1e-10, max_bond=64, lsb_first=False):
+    T = np.asarray(u).reshape((2,) * n)
+    if lsb_first:
+        T = T.transpose(tuple(range(n - 1, -1, -1)))
+    return qtn.MatrixProductState.from_dense(T, cutoff=mps_cutoff, max_bond=max_bond)
+
+
+def qtt_mps_to_vec(mps, lsb_first=False):
+    T = np.asarray(mps.to_dense())
+    if lsb_first:
+        n = T.ndim
+        T = T.transpose(tuple(range(n - 1, -1, -1)))
+    return T.reshape(-1)
+
+
+def mat_to_qtt_mpo(A, n, mpo_cutoff=1e-12, max_bond=256):
     return qtn.MatrixProductOperator.from_dense(
-        A, dims=[2] * n, cutoff=cutoff, max_bond=max_bond
+        A, dims=[2] * n, cutoff=mpo_cutoff, max_bond=max_bond
     )
 
 
-# these functions are for the case where we create the MPO manually
 
-def vec_to_qtt_mps_reverse(u, n, cutoff=1e-10, max_bond=64):
-    T = np.asarray(u).reshape((2,) * n)
-    T = T.transpose(tuple(range(n - 1, -1, -1)))
-    # reverses MPS direction such that least significant bit is first: easier for shift MPOs later
-    return qtn.MatrixProductState.from_dense(T, cutoff=cutoff, max_bond=max_bond)
 
-def qtt_mps_to_vec_unreverse(mps):
-    T = np.asarray(mps.to_dense())
-    n = T.ndim
-    T = T.transpose(tuple(range(n - 1, -1, -1)))
-    # undo MPS direction reversal
-    return T.reshape(-1)
+
 
 def qtt_identity_mpo(n):
 
     W = np.zeros((1, 1, 2, 2))
-    # creates a 4-dimensional tensor. \chi_left = \chi_right = 1, and input and output physical dims = 2
-    # bond dims = 0 since each site acts independently
-
     W[0, 0] = np.eye(2)
-    # fills the slice W[0,0,:,:] with an identity matrix, so now,
-    # W[0,0,0,0] = 1
-    # W[0,0,0,1] = 0
-    # W[0,0,1,0] = 0
-    # W[0,0,1,1] = 1
-    # ie 0 goes to 0, 1 goes to 1
-
-    arrays = [W.copy() for _ in range(n)] # duplicate n such tensors
+    arrays = [W.copy() for _ in range(n)] 
     return qtn.MatrixProductOperator(arrays, shape='lrud') # l=left, r=right, u=upper/output, d=lower/input
 
 def qtt_shift_plus_mpo(n):
