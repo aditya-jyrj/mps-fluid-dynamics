@@ -177,7 +177,68 @@ def qtt_identity_mpo(n):
     arrays = [W.copy() for _ in range(n)] 
     return qtn.MatrixProductOperator(arrays, shape='lrud') # l=left, r=right, u=upper/output, d=lower/input
 
+
 def qtt_shift_plus_mpo(n):
+    arrays = []
+
+    # leftmost site: enforce carry_out = 0 (no overflow past the MSB)
+    WL = np.zeros((1, 2, 2, 2))   # [carry_out, carry_in, bit_out, bit_in]
+    for carry_in in (0, 1):
+        for bit_in in (0, 1):
+            if carry_in == 0:
+                bit_out = bit_in
+                carry_out = 0
+            else:
+                if bit_in == 0:
+                    bit_out = 1
+                    carry_out = 0
+                else:
+                    bit_out = 0
+                    carry_out = 1
+
+            if carry_out == 0:
+                WL[0, carry_in, bit_out, bit_in] = 1.0
+
+    arrays.append(WL)
+
+    # middle sites: propagate carry from right to left
+    W = np.zeros((2, 2, 2, 2))    # [carry_out, carry_in, bit_out, bit_in]
+    for carry_in in (0, 1):
+        for bit_in in (0, 1):
+            if carry_in == 0:
+                bit_out = bit_in
+                carry_out = 0
+            else:
+                if bit_in == 0:
+                    bit_out = 1
+                    carry_out = 0
+                else:
+                    bit_out = 0
+                    carry_out = 1
+
+            W[carry_out, carry_in, bit_out, bit_in] = 1.0
+
+    for _ in range(n - 2):
+        arrays.append(W.copy())
+
+    # rightmost site: inject carry_in = 1 (add one at the LSB)
+    WR = np.zeros((2, 1, 2, 2))   # [carry_out, carry_in, bit_out, bit_in]
+    for bit_in in (0, 1):
+        if bit_in == 0:
+            bit_out = 1
+            carry_out = 0
+        else:
+            bit_out = 0
+            carry_out = 1
+
+        WR[carry_out, 0, bit_out, bit_in] = 1.0
+
+    arrays.append(WR)
+
+    return qtn.MatrixProductOperator(arrays, shape='lrud')
+
+
+def qtt_shift_plus_mpo_reverse(n):
     # we want an MPO that represents |i> -> |i+1>, except at the ends of course
     # this means the MPO looks like |x0 x1 x2 ... xn> -> |x0 x1 x2 ... xn> + 1, where each xk is 0 or 1, and the + is binary addition
 
@@ -281,8 +342,68 @@ def qtt_shift_plus_mpo(n):
 
     return qtn.MatrixProductOperator(arrays, shape='lrud')
 
-
 def qtt_shift_minus_mpo(n):
+    arrays = []
+
+    # leftmost site: enforce borrow_out = 0 (no underflow past the MSB)
+    WL = np.zeros((1, 2, 2, 2))   # [borrow_out, borrow_in, bit_out, bit_in]
+    for borrow_in in (0, 1):
+        for bit_in in (0, 1):
+            if borrow_in == 0:
+                bit_out = bit_in
+                borrow_out = 0
+            else:
+                if bit_in == 0:
+                    bit_out = 1
+                    borrow_out = 1
+                else:
+                    bit_out = 0
+                    borrow_out = 0
+
+            if borrow_out == 0:
+                WL[0, borrow_in, bit_out, bit_in] = 1.0
+
+    arrays.append(WL)
+
+    # middle sites: propagate borrow from right to left
+    W = np.zeros((2, 2, 2, 2))    # [borrow_out, borrow_in, bit_out, bit_in]
+    for borrow_in in (0, 1):
+        for bit_in in (0, 1):
+            if borrow_in == 0:
+                bit_out = bit_in
+                borrow_out = 0
+            else:
+                if bit_in == 0:
+                    bit_out = 1
+                    borrow_out = 1
+                else:
+                    bit_out = 0
+                    borrow_out = 0
+
+            W[borrow_out, borrow_in, bit_out, bit_in] = 1.0
+
+    for _ in range(n - 2):
+        arrays.append(W.copy())
+
+    # rightmost site: inject borrow_in = 1 (subtract one at the LSB)
+    WR = np.zeros((2, 1, 2, 2))   # [borrow_out, borrow_in, bit_out, bit_in]
+    for bit_in in (0, 1):
+        if bit_in == 0:
+            bit_out = 1
+            borrow_out = 1
+        else:
+            bit_out = 0
+            borrow_out = 0
+
+        WR[borrow_out, 0, bit_out, bit_in] = 1.0
+
+    arrays.append(WR)
+
+    return qtn.MatrixProductOperator(arrays, shape='lrud')
+
+
+
+def qtt_shift_minus_mpo_reverse(n):
     arrays = []
 
     # first site
@@ -358,6 +479,16 @@ def qtt_shift_minus_mpo(n):
     arrays.append(WN)
     return qtn.MatrixProductOperator(arrays, shape='lrud')
 
+def qtt_diffusion_mpo_reverse(n, alpha, cutoff=1e-12, max_bond=64):
+    I  = qtt_identity_mpo(n)
+    Sp = qtt_shift_plus_mpo_reverse(n)
+    Sm = qtt_shift_minus_mpo_reverse(n)
+
+    A = (1.0 - 2.0 * alpha) * I + alpha * Sp + alpha * Sm
+    A.compress(cutoff=cutoff, max_bond=max_bond)
+    return A
+
+
 def qtt_diffusion_mpo(n, alpha, cutoff=1e-12, max_bond=64):
     I  = qtt_identity_mpo(n)
     Sp = qtt_shift_plus_mpo(n)
@@ -387,6 +518,25 @@ def evolve_mps(mps0, mpoA, steps, save_every=50, cutoff=1e-10, max_bond=64):
             bonds.append(max(mps.bond_sizes()))
     
         mps = step_mps(mps, mpoA, cutoff, max_bond)
+    
+    # save final state
+    saved.append(mps.copy())
+    bonds.append(max(mps.bond_sizes()))
+    return saved, bonds
+
+def evolve_mps_timed(mps0, mpoA, steps, save_every=50, cutoff=1e-10, max_bond=64):
+    mps = mps0.copy()
+    saved = []
+    bonds = []
+    
+    for i in range(steps):
+        if i % save_every == 0:
+            saved.append(mps.copy())
+            bonds.append(max(mps.bond_sizes()))
+        t0 = time.perf_counter()
+        mps = step_mps(mps, mpoA, cutoff, max_bond)
+        dt_step = time.perf_counter() - t0
+        print(f"step {i:2d}: {dt_step:.6f} s, max bond = {max(mps.bond_sizes())}")
     
     # save final state
     saved.append(mps.copy())
