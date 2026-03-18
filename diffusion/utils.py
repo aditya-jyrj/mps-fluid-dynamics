@@ -66,6 +66,44 @@ def laplacian_1d_sparse_dirichlet(N, dx):
 
 
 
+# the following function returns a list of the time-step matrices 
+# using linear product expansion, where first-order corresponds to
+# forward euler step. 
+
+def time_step(laplacian, order, dt, nu):
+    L = laplacian
+    
+    coeffs = {
+        1: [1.0],
+        2: [(1.0 - 1.0j) / 2.0, (1.0 + 1.0j) / 2.0],
+        3: [0.6265,
+            0.1867 - 0.4808j,
+            0.1867 + 0.4808j],
+        4: [0.0426 - 0.3946j,
+            0.0426 + 0.3946j,
+            0.4573 - 0.2351j,
+            0.4573 + 0.2351j],
+    }
+
+    if order not in coeffs:
+        raise ValueError("Supported orders are 1, 2, 3, 4.")
+    
+    is_sparse = sp.issparse(L)
+    N = L.shape[0]
+
+    dtype = np.complex128 if order >= 2 else np.float64
+
+    if is_sparse:
+        I = sp.eye(N, dtype=dtype)
+    else:
+        I = np.eye(N, dtype=dtype)
+
+    L = L.astype(dtype)
+
+    return [I + a * dt * nu * L for a in coeffs[order]]
+
+
+
 
 # the following two functions, evolve_operator_lpe2 and evolve_operator_euler, both execute time evolution
 # save_every defines how frequently we want to save snapshots of the evolution (eg every 50 timestep advancements)
@@ -73,6 +111,7 @@ def laplacian_1d_sparse_dirichlet(N, dx):
 # 1. np.array(times): the time = steps * dt at each snapshot
 # 2. np.array(saved): the function at the time of the snapshot, discretised into a vector of N elements separated by width dx
 # 3. np.array(norms): the euclidean norm of the vector at each snapshot (helps to compare error) 
+
 
 def evolve_operator_lpe2(u0, steps, A1, A2, dt, save_every=50):
     u = u0.copy()
