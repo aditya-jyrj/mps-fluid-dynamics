@@ -11,7 +11,7 @@ import time
 # depending on whether boundary condition is dirichlet or periodic, and if the format required
 # is a dense matrix (ie all 0s are stored) or sparse matrix
 
-def laplacian_1d(N, dx, bc="dirichlet", fmt="dense"):
+def laplacian(N, dx, bc="dirichlet", fmt="dense"):
     if bc == "periodic" and fmt == "dense":
         return laplacian_1d_dense_periodic(N, dx)
     elif bc == "dirichlet" and fmt == "dense":
