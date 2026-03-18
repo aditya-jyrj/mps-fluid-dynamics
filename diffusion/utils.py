@@ -103,6 +103,8 @@ def time_step(laplacian, order, dt, nu):
     return [I + a * dt * nu * L for a in coeffs[order]]
 
 
+def delta_t(cfl, dx, nu):
+    return cfl * dx * dx / nu
 
 
 # the following two functions, evolve_operator_lpe2 and evolve_operator_euler, both execute time evolution
