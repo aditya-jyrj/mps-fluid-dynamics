@@ -491,22 +491,22 @@ def qtt_shift_minus_mpo_reverse(n):
     arrays.append(WN)
     return qtn.MatrixProductOperator(arrays, shape='lrud')
 
-def qtt_diffusion_mpo_reverse(n, alpha, cutoff=1e-12, max_bond=64):
+def qtt_diffusion_mpo_reverse(n, cfl, cutoff=1e-12, max_bond=64):
     I  = qtt_identity_mpo(n)
     Sp = qtt_shift_plus_mpo_reverse(n)
     Sm = qtt_shift_minus_mpo_reverse(n)
 
-    A = (1.0 - 2.0 * alpha) * I + alpha * Sp + alpha * Sm
+    A = (1.0 - 2.0 * cfl) * I + cfl * Sp + cfl * Sm
     A.compress(cutoff=cutoff, max_bond=max_bond)
     return A
 
 
-def qtt_diffusion_mpo(n, alpha, cutoff=1e-12, max_bond=64):
+def qtt_diffusion_mpo(n, cfl, cutoff=1e-12, max_bond=64):
     I  = qtt_identity_mpo(n)
     Sp = qtt_shift_plus_mpo(n)
     Sm = qtt_shift_minus_mpo(n)
 
-    A = (1.0 - 2.0 * alpha) * I + alpha * Sp + alpha * Sm
+    A = (1.0 - 2.0 * cfl) * I + cfl * Sp + cfl * Sm
     A.compress(cutoff=cutoff, max_bond=max_bond)
     return A
 
