@@ -13,17 +13,17 @@ import time
 
 def laplacian(N, dx, bc="dirichlet", fmt="dense"):
     if bc == "periodic" and fmt == "dense":
-        return laplacian_1d_dense_periodic(N, dx)
+        return laplacian_dense_periodic(N, dx)
     elif bc == "dirichlet" and fmt == "dense":
-        return laplacian_1d_dense_dirichlet(N, dx)
+        return laplacian_dense_dirichlet(N, dx)
     elif bc == "periodic" and fmt == "sparse":
-        return laplacian_1d_sparse_periodic(N, dx)
+        return laplacian_sparse_periodic(N, dx)
     elif bc == "dirichlet" and fmt == "sparse":
-        return laplacian_1d_sparse_dirichlet(N, dx)
+        return laplacian_sparse_dirichlet(N, dx)
     else:
         raise ValueError("bc must be 'periodic' or 'dirichlet', fmt must be 'dense' or 'sparse'")
 
-def laplacian_1d_dense_periodic(N, dx):
+def laplacian_dense_periodic(N, dx):
     L = np.zeros((N, N))
     for i in range(N):
         L[i, i] = -2.0
@@ -31,7 +31,7 @@ def laplacian_1d_dense_periodic(N, dx):
         L[i, (i + 1) % N] = 1.0
     return L / (dx * dx)
 
-def laplacian_1d_dense_dirichlet(N, dx):
+def laplacian_dense_dirichlet(N, dx):
     L = np.zeros((N, N))
     for i in range(N):
         L[i, i] = -2.0
@@ -41,7 +41,7 @@ def laplacian_1d_dense_dirichlet(N, dx):
             L[i, i+1] = 1.0
     return L / (dx * dx)
 
-def laplacian_1d_sparse_periodic(N, dx):
+def laplacian_sparse_periodic(N, dx):
     main = -2.0 * np.ones(N)
     off  = 1.0 * np.ones(N - 1)
     wrap = 1.0 * np.ones(1)
@@ -53,7 +53,7 @@ def laplacian_1d_sparse_periodic(N, dx):
     )
     return L / (dx * dx)
 
-def laplacian_1d_sparse_dirichlet(N, dx):
+def laplacian_sparse_dirichlet(N, dx):
     main = -2.0 * np.ones(N)
     off  = 1.0 * np.ones(N - 1)
     L = sp.diags(
@@ -586,7 +586,7 @@ def time_mps_construction(u0, n, cutoff, max_bond):
     t1 = time.perf_counter()
     return mps0, t1 - t0
 
-def time_mps_construction(u0, n, cutoff, max_bond):
+def time_mps_construction_reverse(u0, n, cutoff, max_bond):
     t0 = time.perf_counter()
     mps0 = vec_to_qtt_mps_reverse(u0, n, cutoff, max_bond)
     t1 = time.perf_counter()
