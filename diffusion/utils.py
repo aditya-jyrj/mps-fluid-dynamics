@@ -106,10 +106,9 @@ def time_step(laplacian, order, dt, nu):
 def delta_t(cfl, dx, nu):
     return cfl * dx * dx / nu
 
-
-# the following two functions, evolve_operator_lpe2 and evolve_operator_euler, both execute time evolution
+# the following function executes time evolution
 # save_every defines how frequently we want to save snapshots of the evolution (eg every 50 timestep advancements)
-# based on this, both functions return three numpy arrays:
+# based on this, the function returns three numpy arrays:
 # 1. np.array(times): the time = steps * dt at each snapshot
 # 2. np.array(saved): the function at the time of the snapshot, discretised into a vector of N elements separated by width dx
 # 3. np.array(norms): the euclidean norm of the vector at each snapshot (helps to compare error) 
@@ -519,7 +518,7 @@ def step_mps(mps, mpo, cutoff=1e-10, max_bond=64):
     mps_new.compress(cutoff=cutoff, max_bond=max_bond)
     return mps_new
 
-def evolve_mps(mps0, mpoA, steps, save_every=50, cutoff=1e-10, max_bond=64):
+def evolve_mps(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
     mps = mps0.copy()
     saved = []
     bonds = []
@@ -529,14 +528,15 @@ def evolve_mps(mps0, mpoA, steps, save_every=50, cutoff=1e-10, max_bond=64):
             saved.append(mps.copy())
             bonds.append(max(mps.bond_sizes()))
     
-        mps = step_mps(mps, mpoA, cutoff, max_bond)
+        for mpoA in mpoA_list:
+            mps = step_mps(mps, mpoA, cutoff, max_bond)
     
     # save final state
     saved.append(mps.copy())
     bonds.append(max(mps.bond_sizes()))
     return saved, bonds
 
-def evolve_mps_timed(mps0, mpoA, steps, save_every=50, cutoff=1e-10, max_bond=64):
+def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
     mps = mps0.copy()
     saved = []
     bonds = []
@@ -545,11 +545,15 @@ def evolve_mps_timed(mps0, mpoA, steps, save_every=50, cutoff=1e-10, max_bond=64
         if i % save_every == 0:
             saved.append(mps.copy())
             bonds.append(max(mps.bond_sizes()))
+
         t0 = time.perf_counter()
-        mps = step_mps(mps, mpoA, cutoff, max_bond)
+
+        for mpoA in mpoA_list:
+            mps = step_mps(mps, mpoA, cutoff, max_bond)
+
         dt_step = time.perf_counter() - t0
         print(f"step {i:2d}: {dt_step:.6f} s, max bond = {max(mps.bond_sizes())}")
-    
+
     # save final state
     saved.append(mps.copy())
     bonds.append(max(mps.bond_sizes()))
