@@ -113,7 +113,7 @@ def time_step(laplacian, order, dt, nu):
 # 3. np.array(norms): the euclidean norm of the vector at each snapshot (helps to compare error) 
 
 
-def evolve_operator_lpe2(u0, steps, A1, A2, dt, save_every=50):
+def evolve_operator(u0, steps, A_list, dt, save_every=50):
     u = u0.copy()
 
     saved = []
@@ -121,45 +121,16 @@ def evolve_operator_lpe2(u0, steps, A1, A2, dt, save_every=50):
     norms = []
 
     t = 0.0
-    
+
     for i in range(steps):
-        # save current state
         if i % save_every == 0:
+            # save current state
             saved.append(u.copy())
             times.append(t)
             norms.append(np.linalg.norm(u))
-    
-        # advance one timestep
-        u = A1 @ u
-        u = A2 @ u
-        t += dt
-    
-    # save final state
-    saved.append(u.copy())
-    times.append(t)
-    norms.append(np.linalg.norm(u))
-    
-    return np.array(times), np.array(saved), np.array(norms)
-
-
-def evolve_operator_euler(u0, steps, A, dt, save_every=50):
-    u = u0.copy()
-
-    saved = []
-    times = []
-    norms = []
-
-    t = 0.0
-    
-    for i in range(steps):
-        # save current state
-        if i % save_every == 0:
-            saved.append(u.copy())
-            times.append(t)
-            norms.append(np.linalg.norm(u))
-    
-        # advance one timestep
-        u = A @ u
+        
+        for A in A_list:
+            u = A @ u
         t += dt
     
     # save final state
