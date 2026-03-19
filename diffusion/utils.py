@@ -176,6 +176,11 @@ def mat_to_qtt_mpo(A, n, mpo_cutoff=1e-12, max_bond=256):
         A, dims=[2] * n, cutoff=mpo_cutoff, max_bond=max_bond
     )
 
+def mats_to_qtt_mpos(A_list, n, mpo_cutoff=1e-12, max_bond=256):
+    return [
+        mat_to_qtt_mpo(A, n, mpo_cutoff=mpo_cutoff, max_bond=max_bond)
+        for A in A_list
+    ]
 
 
 
@@ -535,6 +540,7 @@ def evolve_mps(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64)
     saved.append(mps.copy())
     bonds.append(max(mps.bond_sizes()))
     return saved, bonds
+
 
 def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
     mps = mps0.copy()
