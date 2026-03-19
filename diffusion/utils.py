@@ -184,6 +184,63 @@ def mats_to_qtt_mpos(A_list, n, mpo_cutoff=1e-12, max_bond=256):
 
 
 
+# ====================
+# TIME EVOLUTION IN TN
+# ====================
+
+def step_mps(mps, mpo, cutoff=1e-10, max_bond=64):
+    mps_new = mpo.apply(mps)
+    mps_new.compress(cutoff=cutoff, max_bond=max_bond)
+    return mps_new
+
+def evolve_mps(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
+    mps = mps0.copy()
+    saved = []
+    bonds = []
+    
+    for i in range(steps):
+        if i % save_every == 0:
+            saved.append(mps.copy())
+            bonds.append(max(mps.bond_sizes()))
+    
+        for mpoA in mpoA_list:
+            mps = step_mps(mps, mpoA, cutoff, max_bond)
+    
+    # save final state
+    saved.append(mps.copy())
+    bonds.append(max(mps.bond_sizes()))
+    return saved, bonds
+
+
+def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
+    mps = mps0.copy()
+    saved = []
+    bonds = []
+    
+    for i in range(steps):
+        if i % save_every == 0:
+            saved.append(mps.copy())
+            bonds.append(max(mps.bond_sizes()))
+
+        t0 = time.perf_counter()
+
+        for mpoA in mpoA_list:
+            mps = step_mps(mps, mpoA, cutoff, max_bond)
+
+        dt_step = time.perf_counter() - t0
+        print(f"step {i:2d}: {dt_step:.6f} s, max bond = {max(mps.bond_sizes())}")
+
+    # save final state
+    saved.append(mps.copy())
+    bonds.append(max(mps.bond_sizes()))
+    return saved, bonds
+
+
+
+
+# ==========================
+# MANUAL CONSTRUCTION OF MPO
+# ==========================
 
 
 def qtt_identity_mpo(n):
@@ -254,109 +311,6 @@ def qtt_shift_plus_mpo(n):
     return qtn.MatrixProductOperator(arrays, shape='lrud')
 
 
-def qtt_shift_plus_mpo_reverse(n):
-    # we want an MPO that represents |i> -> |i+1>, except at the ends of course
-    # this means the MPO looks like |x0 x1 x2 ... xn> -> |x0 x1 x2 ... xn> + 1, where each xk is 0 or 1, and the + is binary addition
-
-
-    # so for example if we have 0101 + 1, we iterate through each bit starting from the least significant bit, ie rightmost
-    # first bit: 1 + 1 = 0 with carry = 1
-
-    # second bit: because carry = 1, we add 0 + 1 = 1
-    # since there is no overflow, the carry resets to 0
-
-    # third bit: carry = 0 so the bit remains unchanged
-    # therefore all higher bits also remain unchanged
-
-
-    # in MPS language, each site represents one bit, so 0101 corresponds to the state |0101>
-
-    # the MPO implements this binary addition locally at each site
-    # each tensor maps (input bit, carry_in) -> (output bit, carry_out)
-
-    # the bond index stores the carry bit, so the bond dimension is 2
-    # corresponding to carry = 0 or carry = 1
-
-    # because vec_to_qtt_mps() reverses the ordering of bits,
-    # the least significant bit is placed at the leftmost site
-
-    # therefore the left boundary injects carry = 1 (adding one),
-    # while the right boundary enforces carry = 0 (preventing overflow)
-
-
-    arrays = []
-
-    # first site: incoming carry fixed to 1
-    W0 = np.zeros((1, 2, 2, 2))
-    # [carry_in, carry_out, bit_out, bit_in]
-    # leftmost site (corresponding to least significant bit) has left bond dim = 1 (carry_in must = 1) and right = 2 (one for carry=0, the other for carry=1)
-    # input has two dimensions to receive the original bit and output has two dimensions to represent the result bit
-    for bit_in in (0, 1):
-        if bit_in == 0:
-            # 0 + 1 = 1, carry = 0
-            bit_out = 1
-            carry = 0
-        else:
-            # 1 + 1 = 0 with carry
-            bit_out = 0
-            carry = 1
-        W0[0, carry, bit_out, bit_in] = 1.0
-    arrays.append(W0)
-
-    # middle sites: propagate carry
-    W = np.zeros((2, 2, 2, 2))  # [carry_in, carry_out, bit_out, bit_in]
-
-    for carry_in in (0, 1):
-        for bit_in in (0, 1):
-            if carry_in == 0:
-                # no carry coming in
-                bit_out = bit_in
-                carry_out = 0
-            else:
-                # carry_in = 1
-                if bit_in == 0:
-                    # 0 + 1 = 1
-                    bit_out = 1
-                    carry_out = 0
-                else:
-                    # 1 + 1 = 0 with carry
-                    bit_out = 0
-                    carry_out = 1
-            W[carry_in, carry_out, bit_out, bit_in] = 1.0
-    
-    # actually this part can be expressed far more concisely as
-    # bit_out   = bit_in ^ carry_in   (^ represents XOR in python)
-    # carry_out = bit_in & carry_in   (& represents AND in python)
-
-    for _ in range(n - 2):
-        arrays.append(W.copy())
-
-    # last site
-    WN = np.zeros((2, 1, 2, 2))  # [carry_in, carry_out, bit_out, bit_in]
-
-    for carry_in in (0, 1):
-        for bit_in in (0, 1):
-            if carry_in == 0:
-                # no carry coming in
-                bit_out = bit_in
-                carry_out = 0
-            else:
-                # carry_in = 1
-                if bit_in == 0:
-                    # 0 + 1 = 1
-                    bit_out = 1
-                    carry_out = 0
-                else:
-                    # 1 + 1 = 0 with carry
-                    bit_out = 0
-                    carry_out = 1
-            # only allow transitions where no overflow occurs
-            if carry_out == 0:
-                WN[carry_in, 0, bit_out, bit_in] = 1.0
-
-    arrays.append(WN)
-
-    return qtn.MatrixProductOperator(arrays, shape='lrud')
 
 def qtt_shift_minus_mpo(n):
     arrays = []
@@ -419,92 +373,6 @@ def qtt_shift_minus_mpo(n):
 
 
 
-def qtt_shift_minus_mpo_reverse(n):
-    arrays = []
-
-    # first site
-    W0 = np.zeros((1, 2, 2, 2)) # [borrow_in, borrow_out, bit_out, bit_in]
-    # at the first site, borrow_in is fixed to 1 because we are subtracting 1
-    for bit_in in (0, 1):
-        if bit_in == 0:
-            # 0 - 1 = 1 with borrow
-            bit_out = 1
-            borrow_out = 1
-        else:
-            # 1 - 1 = 0, no borrow
-            bit_out = 0
-            borrow_out = 0
-        W0[0, borrow_out, bit_out, bit_in] = 1.0
-
-    arrays.append(W0)
-
-    # middle sites
-    W = np.zeros((2, 2, 2, 2)) # [borrow_in, borrow_out, bit_out, bit_in]
-
-    for borrow_in in (0, 1):
-        for bit_in in (0, 1):
-
-            if borrow_in == 0:
-                # no borrow coming in, so the bit stays unchanged
-                bit_out = bit_in
-                borrow_out = 0
-
-            else:
-                # borrow_in = 1
-                if bit_in == 0:
-                    # 0 - 1 = 1 with borrow
-                    bit_out = 1
-                    borrow_out = 1
-                else:
-                    # 1 - 1 = 0, no further borrow
-                    bit_out = 0
-                    borrow_out = 0
-
-            W[borrow_in, borrow_out, bit_out, bit_in] = 1.0
-
-    for _ in range(n - 2):
-        arrays.append(W.copy())
-
-    # last site
-    # at the final site we only allow borrow_out = 0
-    WN = np.zeros((2, 1, 2, 2)) # [borrow_in, borrow_out, bit_out, bit_in]
-
-    for borrow_in in (0, 1):
-        for bit_in in (0, 1):
-
-            if borrow_in == 0:
-                # no borrow coming in, so the bit stays unchanged
-                bit_out = bit_in
-                borrow_out = 0
-
-            else:
-                # borrow_in = 1
-                if bit_in == 0:
-                    # 0 - 1 = 1 with borrow
-                    bit_out = 1
-                    borrow_out = 1
-                else:
-                    # 1 - 1 = 0, no further borrow
-                    bit_out = 0
-                    borrow_out = 0
-
-            # only allow transitions with no underflow
-            if borrow_out == 0:
-                WN[borrow_in, 0, bit_out, bit_in] = 1.0
-    
-    arrays.append(WN)
-    return qtn.MatrixProductOperator(arrays, shape='lrud')
-
-def qtt_diffusion_mpo_reverse(n, cfl, cutoff=1e-12, max_bond=64):
-    I  = qtt_identity_mpo(n)
-    Sp = qtt_shift_plus_mpo_reverse(n)
-    Sm = qtt_shift_minus_mpo_reverse(n)
-
-    A = (1.0 - 2.0 * cfl) * I + cfl * Sp + cfl * Sm
-    A.compress(cutoff=cutoff, max_bond=max_bond)
-    return A
-
-
 def qtt_diffusion_mpo(n, cfl, cutoff=1e-12, max_bond=64):
     I  = qtt_identity_mpo(n)
     Sp = qtt_shift_plus_mpo(n)
@@ -513,54 +381,3 @@ def qtt_diffusion_mpo(n, cfl, cutoff=1e-12, max_bond=64):
     A = (1.0 - 2.0 * cfl) * I + cfl * Sp + cfl * Sm
     A.compress(cutoff=cutoff, max_bond=max_bond)
     return A
-
-# ====================
-# TIME EVOLUTION IN TN
-# ====================
-
-def step_mps(mps, mpo, cutoff=1e-10, max_bond=64):
-    mps_new = mpo.apply(mps)
-    mps_new.compress(cutoff=cutoff, max_bond=max_bond)
-    return mps_new
-
-def evolve_mps(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
-    mps = mps0.copy()
-    saved = []
-    bonds = []
-    
-    for i in range(steps):
-        if i % save_every == 0:
-            saved.append(mps.copy())
-            bonds.append(max(mps.bond_sizes()))
-    
-        for mpoA in mpoA_list:
-            mps = step_mps(mps, mpoA, cutoff, max_bond)
-    
-    # save final state
-    saved.append(mps.copy())
-    bonds.append(max(mps.bond_sizes()))
-    return saved, bonds
-
-
-def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
-    mps = mps0.copy()
-    saved = []
-    bonds = []
-    
-    for i in range(steps):
-        if i % save_every == 0:
-            saved.append(mps.copy())
-            bonds.append(max(mps.bond_sizes()))
-
-        t0 = time.perf_counter()
-
-        for mpoA in mpoA_list:
-            mps = step_mps(mps, mpoA, cutoff, max_bond)
-
-        dt_step = time.perf_counter() - t0
-        print(f"step {i:2d}: {dt_step:.6f} s, max bond = {max(mps.bond_sizes())}")
-
-    # save final state
-    saved.append(mps.copy())
-    bonds.append(max(mps.bond_sizes()))
-    return saved, bonds
