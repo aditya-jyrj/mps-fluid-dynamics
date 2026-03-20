@@ -151,23 +151,13 @@ def evolve_operator(u0, steps, A_list, dt, save_every=50):
 # 1. vector <-> MPS
 # 2. matrix  -> MPO
 
-# lsb_first means "least significant bit first".
-# if True, the least significant bit is mapped to the first MPS site rather than the last.
-# this makes the manual construction of shift MPOs more intuitive as carry/borrow propagation then runs left to right.
-
-
-def vec_to_qtt_mps(u, n, mps_cutoff=1e-10, max_bond=64, lsb_first=False):
+def vec_to_qtt_mps(u, n, mps_cutoff=1e-10, max_bond=64):
     T = np.asarray(u).reshape((2,) * n)
-    if lsb_first:
-        T = T.transpose(tuple(range(n - 1, -1, -1)))
     return qtn.MatrixProductState.from_dense(T, cutoff=mps_cutoff, max_bond=max_bond)
 
 
-def qtt_mps_to_vec(mps, lsb_first=False):
+def qtt_mps_to_vec(mps):
     T = np.asarray(mps.to_dense())
-    if lsb_first:
-        n = T.ndim
-        T = T.transpose(tuple(range(n - 1, -1, -1)))
     return T.reshape(-1)
 
 
@@ -188,12 +178,12 @@ def mats_to_qtt_mpos(A_list, n, mpo_cutoff=1e-12, max_bond=256):
 # TIME EVOLUTION IN TN
 # ====================
 
-def step_mps(mps, mpo, cutoff=1e-10, max_bond=64):
+def step_mps(mps, mpo, mps_cutoff=1e-10, max_bond=64):
     mps_new = mpo.apply(mps)
-    mps_new.compress(cutoff=cutoff, max_bond=max_bond)
+    mps_new.compress(cutoff=mps_cutoff, max_bond=max_bond)
     return mps_new
 
-def evolve_mps(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
+def evolve_mps(mps0, mpoA_list, steps, save_every=50, mps_cutoff=1e-10, max_bond=64):
     mps = mps0.copy()
     saved = []
     bonds = []
@@ -204,7 +194,7 @@ def evolve_mps(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64)
             bonds.append(max(mps.bond_sizes()))
     
         for mpoA in mpoA_list:
-            mps = step_mps(mps, mpoA, cutoff, max_bond)
+            mps = step_mps(mps, mpoA, mps_cutoff, max_bond)
     
     # save final state
     saved.append(mps.copy())
@@ -212,7 +202,7 @@ def evolve_mps(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64)
     return saved, bonds
 
 
-def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bond=64):
+def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, mps_cutoff=1e-10, max_bond=64):
     mps = mps0.copy()
     saved = []
     bonds = []
@@ -225,7 +215,7 @@ def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, cutoff=1e-10, max_bo
         t0 = time.perf_counter()
 
         for mpoA in mpoA_list:
-            mps = step_mps(mps, mpoA, cutoff, max_bond)
+            mps = step_mps(mps, mpoA, mps_cutoff, max_bond)
 
         dt_step = time.perf_counter() - t0
         print(f"step {i:2d}: {dt_step:.6f} s, max bond = {max(mps.bond_sizes())}")
