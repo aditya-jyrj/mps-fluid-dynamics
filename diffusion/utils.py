@@ -183,6 +183,17 @@ def step_mps(mps, mpo, mps_cutoff=1e-10, max_bond=64):
     mps_new.compress(cutoff=mps_cutoff, max_bond=max_bond)
     return mps_new
 
+def step_mps_profiled(mps, mpo, mps_cutoff=1e-10, max_bond=64):
+    t0 = time.perf_counter()
+    mps_new = mpo.apply(mps)
+    t_apply = time.perf_counter() - t0
+
+    t1 = time.perf_counter()
+    mps_new.compress(cutoff=mps_cutoff, max_bond=max_bond)
+    t_compress = time.perf_counter() - t1
+
+    return mps_new, t_apply, t_compress
+
 def evolve_mps(mps0, mpoA_list, steps, save_every=50, mps_cutoff=1e-10, max_bond=64):
     mps = mps0.copy()
     saved = []
@@ -206,19 +217,40 @@ def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, mps_cutoff=1e-10, ma
     mps = mps0.copy()
     saved = []
     bonds = []
+    times = []
     
     for i in range(steps):
         if i % save_every == 0:
             saved.append(mps.copy())
             bonds.append(max(mps.bond_sizes()))
 
-        t0 = time.perf_counter()
+        step_apply = 0.0
+        step_compress = 0.0
 
         for mpoA in mpoA_list:
-            mps = step_mps(mps, mpoA, mps_cutoff, max_bond)
+            mps, t_apply, t_compress = step_mps_profiled(mps, mpoA, mps_cutoff, max_bond)
 
-        dt_step = time.perf_counter() - t0
-        print(f"step {i:2d}: {dt_step:.6f} s, max bond = {max(mps.bond_sizes())}")
+            step_apply += t_apply
+            step_compress += t_compress
+
+        times.append({
+        "step": i,
+        "apply": step_apply,
+        "compress": step_compress,
+        "total": step_apply + step_compress,
+        "bond": max(mps.bond_sizes())
+        })
+
+    print("st | apply  |compress| total  | bond")
+    print("----------------------------------------")
+    for t in times:
+        print(
+            f"{t['step']:2d} | "
+            f"{t['apply']:.4f} | "
+            f"{t['compress']:.4f} | "
+            f"{t['total']:.4f} | "
+            f"{t['bond']:3d}"
+        )
 
     # save final state
     saved.append(mps.copy())
