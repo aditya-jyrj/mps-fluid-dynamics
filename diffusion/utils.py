@@ -233,141 +233,141 @@ def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, mps_cutoff=1e-10, ma
 # ==========================
 
 
-def qtt_identity_mpo(n):
+# def qtt_identity_mpo(n):
 
-    W = np.zeros((1, 1, 2, 2))
-    W[0, 0] = np.eye(2)
-    arrays = [W.copy() for _ in range(n)] 
-    return qtn.MatrixProductOperator(arrays, shape='lrud') # l=left, r=right, u=upper/output, d=lower/input
-
-
-def qtt_shift_plus_mpo(n):
-    arrays = []
-
-    # leftmost site: enforce carry_out = 0 (no overflow past the MSB)
-    WL = np.zeros((1, 2, 2, 2))   # [carry_out, carry_in, bit_out, bit_in]
-    for carry_in in (0, 1):
-        for bit_in in (0, 1):
-            if carry_in == 0:
-                bit_out = bit_in
-                carry_out = 0
-            else:
-                if bit_in == 0:
-                    bit_out = 1
-                    carry_out = 0
-                else:
-                    bit_out = 0
-                    carry_out = 1
-
-            if carry_out == 0:
-                WL[0, carry_in, bit_out, bit_in] = 1.0
-
-    arrays.append(WL)
-
-    # middle sites: propagate carry from right to left
-    W = np.zeros((2, 2, 2, 2))    # [carry_out, carry_in, bit_out, bit_in]
-    for carry_in in (0, 1):
-        for bit_in in (0, 1):
-            if carry_in == 0:
-                bit_out = bit_in
-                carry_out = 0
-            else:
-                if bit_in == 0:
-                    bit_out = 1
-                    carry_out = 0
-                else:
-                    bit_out = 0
-                    carry_out = 1
-
-            W[carry_out, carry_in, bit_out, bit_in] = 1.0
-
-    for _ in range(n - 2):
-        arrays.append(W.copy())
-
-    # rightmost site: inject carry_in = 1 (add one at the LSB)
-    WR = np.zeros((2, 1, 2, 2))   # [carry_out, carry_in, bit_out, bit_in]
-    for bit_in in (0, 1):
-        if bit_in == 0:
-            bit_out = 1
-            carry_out = 0
-        else:
-            bit_out = 0
-            carry_out = 1
-
-        WR[carry_out, 0, bit_out, bit_in] = 1.0
-
-    arrays.append(WR)
-
-    return qtn.MatrixProductOperator(arrays, shape='lrud')
+#     W = np.zeros((1, 1, 2, 2))
+#     W[0, 0] = np.eye(2)
+#     arrays = [W.copy() for _ in range(n)] 
+#     return qtn.MatrixProductOperator(arrays, shape='lrud') # l=left, r=right, u=upper/output, d=lower/input
 
 
+# def qtt_shift_plus_mpo(n):
+#     arrays = []
 
-def qtt_shift_minus_mpo(n):
-    arrays = []
+#     # leftmost site: enforce carry_out = 0 (no overflow past the MSB)
+#     WL = np.zeros((1, 2, 2, 2))   # [carry_out, carry_in, bit_out, bit_in]
+#     for carry_in in (0, 1):
+#         for bit_in in (0, 1):
+#             if carry_in == 0:
+#                 bit_out = bit_in
+#                 carry_out = 0
+#             else:
+#                 if bit_in == 0:
+#                     bit_out = 1
+#                     carry_out = 0
+#                 else:
+#                     bit_out = 0
+#                     carry_out = 1
 
-    # leftmost site: enforce borrow_out = 0 (no underflow past the MSB)
-    WL = np.zeros((1, 2, 2, 2))   # [borrow_out, borrow_in, bit_out, bit_in]
-    for borrow_in in (0, 1):
-        for bit_in in (0, 1):
-            if borrow_in == 0:
-                bit_out = bit_in
-                borrow_out = 0
-            else:
-                if bit_in == 0:
-                    bit_out = 1
-                    borrow_out = 1
-                else:
-                    bit_out = 0
-                    borrow_out = 0
+#             if carry_out == 0:
+#                 WL[0, carry_in, bit_out, bit_in] = 1.0
 
-            if borrow_out == 0:
-                WL[0, borrow_in, bit_out, bit_in] = 1.0
+#     arrays.append(WL)
 
-    arrays.append(WL)
+#     # middle sites: propagate carry from right to left
+#     W = np.zeros((2, 2, 2, 2))    # [carry_out, carry_in, bit_out, bit_in]
+#     for carry_in in (0, 1):
+#         for bit_in in (0, 1):
+#             if carry_in == 0:
+#                 bit_out = bit_in
+#                 carry_out = 0
+#             else:
+#                 if bit_in == 0:
+#                     bit_out = 1
+#                     carry_out = 0
+#                 else:
+#                     bit_out = 0
+#                     carry_out = 1
 
-    # middle sites: propagate borrow from right to left
-    W = np.zeros((2, 2, 2, 2))    # [borrow_out, borrow_in, bit_out, bit_in]
-    for borrow_in in (0, 1):
-        for bit_in in (0, 1):
-            if borrow_in == 0:
-                bit_out = bit_in
-                borrow_out = 0
-            else:
-                if bit_in == 0:
-                    bit_out = 1
-                    borrow_out = 1
-                else:
-                    bit_out = 0
-                    borrow_out = 0
+#             W[carry_out, carry_in, bit_out, bit_in] = 1.0
 
-            W[borrow_out, borrow_in, bit_out, bit_in] = 1.0
+#     for _ in range(n - 2):
+#         arrays.append(W.copy())
 
-    for _ in range(n - 2):
-        arrays.append(W.copy())
+#     # rightmost site: inject carry_in = 1 (add one at the LSB)
+#     WR = np.zeros((2, 1, 2, 2))   # [carry_out, carry_in, bit_out, bit_in]
+#     for bit_in in (0, 1):
+#         if bit_in == 0:
+#             bit_out = 1
+#             carry_out = 0
+#         else:
+#             bit_out = 0
+#             carry_out = 1
 
-    # rightmost site: inject borrow_in = 1 (subtract one at the LSB)
-    WR = np.zeros((2, 1, 2, 2))   # [borrow_out, borrow_in, bit_out, bit_in]
-    for bit_in in (0, 1):
-        if bit_in == 0:
-            bit_out = 1
-            borrow_out = 1
-        else:
-            bit_out = 0
-            borrow_out = 0
+#         WR[carry_out, 0, bit_out, bit_in] = 1.0
 
-        WR[borrow_out, 0, bit_out, bit_in] = 1.0
+#     arrays.append(WR)
 
-    arrays.append(WR)
-
-    return qtn.MatrixProductOperator(arrays, shape='lrud')
+#     return qtn.MatrixProductOperator(arrays, shape='lrud')
 
 
 
-def qtt_diffusion_mpo(n, cfl, cutoff=1e-12, max_bond=64):
-    I  = qtt_identity_mpo(n)
-    Sp = qtt_shift_plus_mpo(n)
-    Sm = qtt_shift_minus_mpo(n)
+# def qtt_shift_minus_mpo(n):
+#     arrays = []
 
-    A = (1.0 - 2.0 * cfl) * I + cfl * Sp + cfl * Sm
-    A.compress(cutoff=cutoff, max_bond=max_bond)
-    return A
+#     # leftmost site: enforce borrow_out = 0 (no underflow past the MSB)
+#     WL = np.zeros((1, 2, 2, 2))   # [borrow_out, borrow_in, bit_out, bit_in]
+#     for borrow_in in (0, 1):
+#         for bit_in in (0, 1):
+#             if borrow_in == 0:
+#                 bit_out = bit_in
+#                 borrow_out = 0
+#             else:
+#                 if bit_in == 0:
+#                     bit_out = 1
+#                     borrow_out = 1
+#                 else:
+#                     bit_out = 0
+#                     borrow_out = 0
+
+#             if borrow_out == 0:
+#                 WL[0, borrow_in, bit_out, bit_in] = 1.0
+
+#     arrays.append(WL)
+
+#     # middle sites: propagate borrow from right to left
+#     W = np.zeros((2, 2, 2, 2))    # [borrow_out, borrow_in, bit_out, bit_in]
+#     for borrow_in in (0, 1):
+#         for bit_in in (0, 1):
+#             if borrow_in == 0:
+#                 bit_out = bit_in
+#                 borrow_out = 0
+#             else:
+#                 if bit_in == 0:
+#                     bit_out = 1
+#                     borrow_out = 1
+#                 else:
+#                     bit_out = 0
+#                     borrow_out = 0
+
+#             W[borrow_out, borrow_in, bit_out, bit_in] = 1.0
+
+#     for _ in range(n - 2):
+#         arrays.append(W.copy())
+
+#     # rightmost site: inject borrow_in = 1 (subtract one at the LSB)
+#     WR = np.zeros((2, 1, 2, 2))   # [borrow_out, borrow_in, bit_out, bit_in]
+#     for bit_in in (0, 1):
+#         if bit_in == 0:
+#             bit_out = 1
+#             borrow_out = 1
+#         else:
+#             bit_out = 0
+#             borrow_out = 0
+
+#         WR[borrow_out, 0, bit_out, bit_in] = 1.0
+
+#     arrays.append(WR)
+
+#     return qtn.MatrixProductOperator(arrays, shape='lrud')
+
+
+
+# def qtt_diffusion_mpo(n, cfl, cutoff=1e-12, max_bond=64):
+#     I  = qtt_identity_mpo(n)
+#     Sp = qtt_shift_plus_mpo(n)
+#     Sm = qtt_shift_minus_mpo(n)
+
+#     A = (1.0 - 2.0 * cfl) * I + cfl * Sp + cfl * Sm
+#     A.compress(cutoff=cutoff, max_bond=max_bond)
+#     return A
