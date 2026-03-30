@@ -206,11 +206,15 @@ def evolve_mps(mps0, mpoA_list, steps, save_every=50, mps_cutoff=1e-10, max_bond
 
 def step_mps_profiled(mps, mpo, mps_cutoff=1e-10, max_bond=64):
     t0 = time.perf_counter()
-    mps_new = mpo.apply(mps)
+    mps_new = mpo.apply(
+        mps,
+        compress=True,
+        cutoff=mps_cutoff,
+        max_bond=max_bond
+    )
     t_apply = time.perf_counter() - t0
 
     t1 = time.perf_counter()
-    mps_new.compress(cutoff=mps_cutoff, max_bond=max_bond)
     t_compress = time.perf_counter() - t1
 
     return mps_new, t_apply, t_compress
@@ -231,7 +235,6 @@ def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, mps_cutoff=1e-10, ma
 
         for mpoA in mpoA_list:
             mps, t_apply, t_compress = step_mps_profiled(mps, mpoA, mps_cutoff, max_bond)
-
             step_apply += t_apply
             step_compress += t_compress
 
