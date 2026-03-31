@@ -230,34 +230,27 @@ def evolve_mps_timed(mps0, mpoA_list, steps, save_every=50, mps_cutoff=1e-10, ma
             saved.append(mps.copy())
             bonds.append(max(mps.bond_sizes()))
 
-        step_apply = 0.0
-        step_compress = 0.0
-
+        t0 = time.perf_counter()
         for mpoA in mpoA_list:
-            mps, t_apply, t_compress = step_mps_profiled(mps, mpoA, mps_cutoff, max_bond)
-            step_apply += t_apply
-            step_compress += t_compress
+            mps = step_mps(mps, mpoA, mps_cutoff, max_bond)
+        time_taken = time.perf_counter() - t0
 
         times.append({
         "step": i,
-        "apply": step_apply,
-        "compress": step_compress,
-        "total": step_apply + step_compress,
+        "time": time_taken,
         "bond": max(mps.bond_sizes())
         })
 
-    print("st | apply  |compress| total  | bond")
-    print("----------------------------------------")
+    print("st |  time  | bond")
+    print("------------------")
     for t in times:
         print(
             f"{t['step']:2d} | "
-            f"{t['apply']:.4f} | "
-            f"{t['compress']:.4f} | "
-            f"{t['total']:.4f} | "
+            f"{t['time']:.4f} | "
             f"{t['bond']:3d}"
         )
 
     # save final state
     saved.append(mps.copy())
     bonds.append(max(mps.bond_sizes()))
-    return saved, bonds
+    return saved, bonds, times
