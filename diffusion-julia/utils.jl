@@ -77,6 +77,14 @@ function dense_to_qtt_mps(u::Vector{<:Number}, sites::Vector{<:Index}; cutoff=1e
     return MPS(T, sites; cutoff=cutoff)
 end
 
+# ---------------------- MPS to Dense Matrix ----------------------
+function qtt_mps_to_dense(mps::MPS, sites::Vector{<:Index})
+    T = prod(mps)
+    C = combiner(reverse(sites)...)
+    Tc = T * C
+    return Array(Tc, combinedind(C))
+end
+
 # ---------------------- MPO to Dense Matrix ----------------------
 function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
     T = prod(M)
