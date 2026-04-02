@@ -39,6 +39,27 @@ function laplacian_2d(Nx::Int, Ny::Int; bcx::Symbol=:dirichlet, bcy::Symbol=:dir
     return kron(Lx, Iy) + kron(Ix, Ly)
 end
 
+# ===================
+# TIME STEP OPERATORS
+# ===================
+
+
+# The exact time evolution matrix in dense format
+function A_exact(N::Int, cfl::Float64, bc::Symbol=:dirichlet)
+    return I - cfl * laplacian(N, bc)
+end
+
+function A_exact_2d(Nx::Int, Ny::Int, cflx::Float64, cfly::Float64;
+                    bcx::Symbol=:dirichlet, bcy::Symbol=:dirichlet)
+    Lx = laplacian(Nx, bcx)
+    Ly = laplacian(Ny, bcy)
+
+    Ix = Matrix(I, Nx, Nx)
+    Iy = Matrix(I, Ny, Ny)
+
+    return Matrix(I, Nx*Ny, Nx*Ny) - cflx * kron(Lx, Iy) - cfly * kron(Ix, Ly)
+end
+
 # ==========
 # CONVERTERS
 # ==========
@@ -136,11 +157,6 @@ end
 # ==============
 # TIME EVOLUTION
 # ==============
-
-# The exact time evolution matrix in dense format
-function A_exact(N::Int, cfl::Float64, bc::Symbol=:dirichlet)
-    return I - cfl * laplacian(N, bc)
-end
 
 function evolve_mps(mps0::MPS, A::MPO, steps::Int; cutoff=1e-10, maxdim=64, verbose=false)
     mps = copy(mps0)
