@@ -120,42 +120,16 @@ function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
     return Array(Tc, combinedind(C_row), combinedind(C_col))
 end
 
-# MPS parameters
-n = 5
-steps = 10
-N = 2^n
-
-# Mesh parameters
-nu = 1e-3
-cfl = 0.1
-x = range(0, 1, length=N+1)[1:end-1]
-dx = x[2] - x[1]
-dt = cfl * dx^2 / nu
-
-sites = siteinds("S=1/2", n)
-
-# Initial state sampled at x
-u0 = @. sin(2 * pi * 2 * x) + 0.5 * sin(2 * pi * 7 * x) # same initial condition as in the notebook
-
-mps0 = dense_to_qtt_mps(u0, sites)
-
-# Compare the A obtained via MPO and exact matrix
-A_mpo_network = A_mpo(sites, cfl)
-A_mpo_mat = mpo_to_matrix(A_mpo_network, sites)
-
-A_exact_mat = A_exact(N, cfl, :dirichlet)
-
-diff = norm(A_mpo_mat - A_exact_mat)
-println("Max difference between A_mpo_mat and A_exact_mat: ", diff)
-
 # ---------------------- Time Evolution ----------------------
-function evolve_mps(mps0::MPS, A::MPO, steps::Int; cutoff=1e-10, maxdim=64)
+function evolve_mps(mps0::MPS, A::MPO, steps::Int; cutoff=1e-10, maxdim=64, verbose=false)
     mps = copy(mps0)
     
     # Pretty printing
-    println("="^65)
-    @printf("%-10s | %-20s | %-15s\n", "Step", "Max link dim", "Time (s)")
-    println("-"^65)
+    if verbose
+        println("="^65)
+        @printf("%-10s | %-20s | %-15s\n", "Step", "Max link dim", "Time (s)")
+        println("-"^65)
+    end
 
     # smoke-run to warm up the JIT compiler (discards the result)
     apply(A, mps; alg="naive", cutoff=cutoff, maxdim=maxdim)
@@ -165,40 +139,14 @@ function evolve_mps(mps0::MPS, A::MPO, steps::Int; cutoff=1e-10, maxdim=64)
         # Contract the MPO and MPS, then compress based on the given cutoff
         t = @elapsed mps = apply(A, mps; alg="naive", cutoff=cutoff, maxdim=maxdim)
         total_time += t
-
-        @printf("%-10d | %-20d | %-15.6f\n", step, maxlinkdim(mps), t)
+        if verbose
+            @printf("%-10d | %-20d | %-15.6f\n", step, maxlinkdim(mps), t)
+        end
     end
-    println("-"^65)
-    @printf("%-10s   %-20s   Total Time: %.6fs\n", "Total", "", total_time)
-    println("="^65)
+    if verbose
+        println("-"^65)
+        @printf("%-10s   %-20s   Total Time: %.6fs\n", "Total", "", total_time)
+        println("="^65)
+    end
     return mps
 end
-
-final_mps = evolve_mps(mps0, A_mpo_network, steps)
-
-#=
-Output: 
-Max difference between A_mpo_mat and A_exact_mat: 8.092116931227675e-15
-=================================================================
-Step       | Max link dim         | Time (s)       
------------------------------------------------------------------
-1          | 4                    | 0.000559       
-2          | 4                    | 0.000599       
-3          | 4                    | 0.000483       
-4          | 4                    | 0.000446       
-5          | 4                    | 0.000457       
-6          | 4                    | 0.000437       
-7          | 4                    | 0.000456       
-8          | 4                    | 0.000675       
-9          | 4                    | 0.000500       
-10         | 4                    | 0.000445       
------------------------------------------------------------------
-Total                               Total Time: 0.005057s
-=================================================================
-5-element MPS:
- ((dim=2|id=933|"S=1/2,Site,n=1"), (dim=2|id=878|"CMB,Link"))
- ((dim=2|id=403|"S=1/2,Site,n=2"), (dim=4|id=563|"CMB,Link"), (dim=2|id=878|"CMB,Link"))
- ((dim=2|id=804|"S=1/2,Site,n=3"), (dim=4|id=180|"CMB,Link"), (dim=4|id=563|"CMB,Link"))
- ((dim=2|id=596|"S=1/2,Site,n=4"), (dim=2|id=570|"CMB,Link"), (dim=4|id=180|"CMB,Link"))
- ((dim=2|id=114|"S=1/2,Site,n=5"), (dim=2|id=570|"CMB,Link"))
-=#
