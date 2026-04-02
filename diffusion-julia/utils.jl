@@ -39,11 +39,39 @@ function laplacian_2d(Nx::Int, Ny::Int; bcx::Symbol=:dirichlet, bcy::Symbol=:dir
     return kron(Lx, Iy) + kron(Ix, Ly)
 end
 
+# ==========
+# CONVERTERS
+# ==========
 
-# The exact time evolution matrix in dense format
-function A_exact(N::Int, cfl::Float64, bc::Symbol=:dirichlet)
-    return I - cfl * laplacian(N, bc)
+# ---------------------- Vector to Tensor to MPS ----------------------
+function dense_to_qtt_mps(u::Vector{<:Number}, sites::Vector{<:Index}; cutoff=1e-10)
+    n = length(sites)
+    # Reshape the vector into a 2x2x...x2 multidimensional tensor
+    u_tensor = reshape(u, fill(2, n)...)
+    
+    # Push the dense array into a single ITensor block
+    T = ITensor(u_tensor, reverse(sites)...)
+    
+    # Perform a sequential SVD to break the block down into an MPS
+    return MPS(T, sites; cutoff=cutoff)
 end
+
+# ---------------------- MPO to Dense Matrix ----------------------
+function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
+    T = prod(M)
+    
+    # REVERSE the sites so sites[n] varies fastest (Julia follows column-major convention unlike Python)
+    C_row = combiner(reverse(prime.(sites))...)
+    C_col = combiner(reverse(sites)...)
+    
+    Tc = T * C_row * C_col
+    
+    return Array(Tc, combinedind(C_row), combinedind(C_col))
+end
+
+# ==========================
+# DIFFUSION MPO CONSTRUCTION
+# ==========================
 
 # The Shift Plus (S_+) operator in QTT format using block-matrix notation
 function qtt_shift_plus(sites::Vector{<:Index})
@@ -104,33 +132,16 @@ function A_mpo(sites::Vector{<:Index}, cfl::Float64)
     return (1 - 2*cfl) * I_mat + cfl * (qtt_shift_plus(sites) + qtt_shift_minus(sites))
 end
 
-# ---------------------- Vector to Tensor to MPS ----------------------
-function dense_to_qtt_mps(u::Vector{<:Number}, sites::Vector{<:Index}; cutoff=1e-10)
-    n = length(sites)
-    # Reshape the vector into a 2x2x...x2 multidimensional tensor
-    u_tensor = reshape(u, fill(2, n)...)
-    
-    # Push the dense array into a single ITensor block
-    T = ITensor(u_tensor, reverse(sites)...)
-    
-    # Perform a sequential SVD to break the block down into an MPS
-    return MPS(T, sites; cutoff=cutoff)
+
+# ==============
+# TIME EVOLUTION
+# ==============
+
+# The exact time evolution matrix in dense format
+function A_exact(N::Int, cfl::Float64, bc::Symbol=:dirichlet)
+    return I - cfl * laplacian(N, bc)
 end
 
-# ---------------------- MPO to Dense Matrix ----------------------
-function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
-    T = prod(M)
-    
-    # REVERSE the sites so sites[n] varies fastest (Julia follows column-major convention unlike Python)
-    C_row = combiner(reverse(prime.(sites))...)
-    C_col = combiner(reverse(sites)...)
-    
-    Tc = T * C_row * C_col
-    
-    return Array(Tc, combinedind(C_row), combinedind(C_col))
-end
-
-# ---------------------- Time Evolution ----------------------
 function evolve_mps(mps0::MPS, A::MPO, steps::Int; cutoff=1e-10, maxdim=64, verbose=false)
     mps = copy(mps0)
     
