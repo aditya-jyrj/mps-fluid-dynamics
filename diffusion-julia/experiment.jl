@@ -1,3 +1,5 @@
+include("utils.jl")
+
 # MPS parameters
 n = 5
 steps = 10
