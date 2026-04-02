@@ -5,15 +5,14 @@ using ITensors, ITensorMPS
 # Native Julia packages
 using LinearAlgebra, Printf
 
-# The matrix Laplacian
+# ==========
+# LAPLACIANS
+# ==========
+
 function laplacian(N::Int, bc::Symbol=:dirichlet)
-    # Create a vector of ones with length N
     v = ones(N)
-    
-    # Create the Laplacian matrix
     L = diagm(0 => 2*v, -1 => -v[1:N-1], 1 => -v[1:N-1])    
     
-    # Apply boundary conditions
     if bc == :dirichlet
         L[1, 1] = 2.0
         L[N, N] = 2.0
@@ -29,6 +28,17 @@ function laplacian(N::Int, bc::Symbol=:dirichlet)
     
     return L
 end
+
+function laplacian_2d(Nx::Int, Ny::Int; bcx::Symbol=:dirichlet, bcy::Symbol=:dirichlet)
+    Lx = laplacian(Nx, bcx)
+    Ly = laplacian(Ny, bcy)
+
+    Ix = Matrix(I, Nx, Nx)
+    Iy = Matrix(I, Ny, Ny)
+
+    return kron(Lx, Iy) + kron(Ix, Ly)
+end
+
 
 # The exact time evolution matrix in dense format
 function A_exact(N::Int, cfl::Float64, bc::Symbol=:dirichlet)
