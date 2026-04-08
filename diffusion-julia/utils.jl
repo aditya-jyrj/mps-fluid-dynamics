@@ -98,6 +98,66 @@ function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
     return Array(Tc, combinedind(C_row), combinedind(C_col))
 end
 
+
+function digits_base2_msb(k::Int, nbits::Int)
+    # converts numbers to binary digits with most significant bit coming first
+    # k should run from 0 to 2^nbits - 1
+
+    ds = digits(k, base=2, pad=nbits) 
+    # eg digits(2, base=2) == [0,1], but digits(2, base=2, pad=4) = [0,1,0,0] (ensures that all bitvectors are of same length)
+    # note that julia returns least significant bit first, ie [0,1,0,0] instead of [0,0,1,0]. we have to reverse this
+
+    return reverse(ds) # digits() returns bit strings with least significant bit first. we want the reverse of that
+end
+
+function interleave_bits(xbits::Vector{Int}, ybits::Vector{Int})
+    # takes in an input x bitvector and y bitvector and interleaves them
+    # by creating an output vector of length 2n and filling odd (2k-1) indices with x and even (2k) with y
+
+    n = length(xbits)
+    length(ybits) == n || throw(ArgumentError("xbits and ybits must have same length"))
+    out = Vector{Int}(undef, 2 * n)
+    for k in 1:n
+        out[2k - 1] = xbits[k]
+        out[2k]     = ybits[k]
+    end
+    return out
+end
+
+function grid2d_to_interleaved_qtt_tensor(u::AbstractMatrix, n::Int)
+    Nx, Ny = size(u)
+
+    # sanity check (cheap, not philosophical)
+    Nx == 2^n || throw(ArgumentError("Expected Nx = 2^n = $(2^n), got Nx = $Nx"))
+    Ny == 2^n || throw(ArgumentError("Expected Ny = 2^n = $(2^n), got Ny = $Ny"))
+
+    T = zeros(eltype(u), ntuple(_ -> 2, 2*n))
+
+    for ix in 0:Nx-1
+        xbits = digits_base2_msb(ix, n)
+        for iy in 0:Ny-1
+            ybits = digits_base2_msb(iy, n)
+            bits = interleave_bits(xbits, ybits)
+
+            inds = Tuple(b + 1 for b in bits)
+            T[inds...] = u[ix + 1, iy + 1]
+        end
+    end
+
+    return T
+end
+
+function dense_2d_to_interleaved_qtt_mps(u::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-10)
+    nsites = length(sites) # nsites is total number of bits, ie num x bits + num y bits
+    iseven(nsites) || throw(ArgumentError("Need an even number of sites for interleaved 2D QTT"))
+    n = nsites ÷ 2 # ÷ returns integer, / returns float. this is the number of bits per dimension
+
+    T = grid2d_to_interleaved_qtt_tensor(u, n)
+    IT = ITensor(T, reverse(sites)...)
+    return MPS(IT, sites; cutoff=cutoff)
+end
+
+
 # ==========================
 # DIFFUSION MPO CONSTRUCTION
 # ==========================
