@@ -98,7 +98,7 @@ function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
     return Array(Tc, combinedind(C_row), combinedind(C_col))
 end
 
-# DENSE MATRIX TO MPO
+# DENSE OPERATOR TO MPO
 function dense_matrix_to_qtt_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-12)
     n = length(sites)
     N = 2^n
@@ -114,6 +114,7 @@ function dense_matrix_to_qtt_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cuto
     return MPO(T, sites; cutoff=cutoff)
 end
 
+# MATRICES TO INTERLEAVED MPS
 
 function digits_base2_msb(k::Int, nbits::Int)
     # converts numbers to binary digits with most significant bit coming first
@@ -125,8 +126,6 @@ function digits_base2_msb(k::Int, nbits::Int)
 
     return reverse(ds) # digits() returns bit strings with least significant bit first. we want the reverse of that
 end
-
-# MATRICES TO INTERLEAVED MPS
 
 function interleave_bits(xbits::Vector{Int}, ybits::Vector{Int})
     # takes in an input x bitvector and y bitvector and interleaves them
@@ -216,6 +215,22 @@ function interleaved_qtt_mps_to_grid2d(mps::MPS, sites::Vector{<:Index})
     T = reshape(Tvec, ntuple(_ -> 2, 2 * n)...)
 
     return interleaved_qtt_tensor_to_grid2d(T, n)
+end
+
+# STANDARD <-> INTERLEAVED VECTORS
+function grid2d_to_standard_vec(u::AbstractMatrix)
+    return reshape(u, :)
+end
+
+function grid2d_to_interleaved_vec(u::AbstractMatrix, n::Int)
+    T = grid2d_to_interleaved_qtt_tensor(u, n)
+    return reshape(T, :)
+end
+
+function standard_vec_to_grid2d(v::AbstractVector, n::Int)
+    N = 2^n
+    length(v) == N^2 || throw(ArgumentError("Expected vector of length $(N^2)"))
+    return reshape(v, N, N)
 end
 
 
