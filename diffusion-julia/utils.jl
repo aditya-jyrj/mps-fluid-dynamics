@@ -65,17 +65,17 @@ end
 # ==========
 
 # ---------------------- Vector to Tensor to MPS ----------------------
-function dense_to_qtt_mps(u::Vector{<:Number}, sites::Vector{<:Index}; cutoff=1e-10)
-    n = length(sites)
-    # Reshape the vector into a 2x2x...x2 multidimensional tensor
-    u_tensor = reshape(u, fill(2, n)...)
+# function dense_to_qtt_mps(u::Vector{<:Number}, sites::Vector{<:Index}; cutoff=1e-10)
+#     n = length(sites)
+#     # Reshape the vector into a 2x2x...x2 multidimensional tensor
+#     u_tensor = reshape(u, fill(2, n)...)
     
-    # Push the dense array into a single ITensor block
-    T = ITensor(u_tensor, reverse(sites)...)
+#     # Push the dense array into a single ITensor block
+#     T = ITensor(u_tensor, reverse(sites)...)
     
-    # Perform a sequential SVD to break the block down into an MPS
-    return MPS(T, sites; cutoff=cutoff)
-end
+#     # Perform a sequential SVD to break the block down into an MPS
+#     return MPS(T, sites; cutoff=cutoff)
+# end
 
 # ---------------------- MPS to Dense Matrix ----------------------
 function qtt_mps_to_dense(mps::MPS, sites::Vector{<:Index})
@@ -109,6 +109,8 @@ function digits_base2_msb(k::Int, nbits::Int)
 
     return reverse(ds) # digits() returns bit strings with least significant bit first. we want the reverse of that
 end
+
+# MATRICES TO INTERLEAVED MPS
 
 function interleave_bits(xbits::Vector{Int}, ybits::Vector{Int})
     # takes in an input x bitvector and y bitvector and interleaves them
@@ -155,6 +157,49 @@ function dense_2d_to_interleaved_qtt_mps(u::AbstractMatrix, sites::Vector{<:Inde
     T = grid2d_to_interleaved_qtt_tensor(u, n)
     IT = ITensor(T, reverse(sites)...)
     return MPS(IT, sites; cutoff=cutoff)
+end
+
+# INTERLEAVED MPS TO MATRICES
+
+function bits_msb_to_int(bits::AbstractVector{<:Integer})
+    x = 0
+    for b in bits
+        x = 2 * x + b
+    end
+    return x
+end
+
+function interleaved_qtt_tensor_to_grid2d(T::AbstractArray, n::Int)
+    ndims(T) == 2 * n || throw(ArgumentError("Tensor must have 2n dimensions"))
+    all(size(T, k) == 2 for k in 1:2*n) || throw(ArgumentError("Each tensor dimension must be 2"))
+
+    Nx = 2^n
+    Ny = 2^n
+    u = zeros(eltype(T), Nx, Ny)
+
+    for ix in 0:Nx-1
+        xbits = digits_base2_msb(ix, n)
+        for iy in 0:Ny-1
+            ybits = digits_base2_msb(iy, n)
+            bits = interleave_bits(xbits, ybits)
+
+            inds = Tuple(b + 1 for b in bits)
+            u[ix + 1, iy + 1] = T[inds...]
+        end
+    end
+
+    return u
+end
+
+function interleaved_qtt_mps_to_grid2d(mps::MPS, sites::Vector{<:Index})
+    nsites = length(sites)
+    iseven(nsites) || throw(ArgumentError("Need an even number of sites for interleaved 2D QTT"))
+    n = nsites ÷ 2
+
+    Tvec = qtt_mps_to_dense(mps, sites)
+    T = reshape(Tvec, ntuple(_ -> 2, 2 * n)...)
+
+    return interleaved_qtt_tensor_to_grid2d(T, n)
 end
 
 
