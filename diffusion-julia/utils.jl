@@ -98,6 +98,22 @@ function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
     return Array(Tc, combinedind(C_row), combinedind(C_col))
 end
 
+# DENSE MATRIX TO MPO
+function dense_matrix_to_qtt_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-12)
+    n = length(sites)
+    N = 2^n
+    size(A) == (N, N) || throw(ArgumentError("Expected $(N)×$(N) matrix, got $(size(A))"))
+
+    # reshape matrix into tensor with row bits and column bits
+    A_tensor = reshape(A, ntuple(_ -> 2, 2 * n)...)
+
+    row_inds = reverse(prime.(sites))
+    col_inds = reverse(sites)
+
+    T = ITensor(A_tensor, row_inds..., col_inds...)
+    return MPO(T, sites; cutoff=cutoff)
+end
+
 
 function digits_base2_msb(k::Int, nbits::Int)
     # converts numbers to binary digits with most significant bit coming first
