@@ -28,7 +28,7 @@ println("Grouped MPS reconstruction error = ", norm(u0 - u0_back))
 
 # GRID -> GROUPED vs GRID -> MPS -> GROUPED
 u0_grouped_dense = grid_to_grouped_vector_2d(u0, n)
-u0_grouped_from_mps = mps_to_vector(mps0, sites2d)
+u0_grouped_from_mps = grouped_mps_to_vector(mps0, sites2d)
 println("Grouped state vector error = ", norm(u0_grouped_dense - u0_grouped_from_mps))
 
 # =============================
@@ -71,14 +71,10 @@ for _ in 1:steps
     u_grouped = A_dense_from_mpo * u_grouped
 end
 
-T_grouped = reshape(u_grouped, ntuple(_ -> 2, 2n)...)
-u_grid_dense_grouped = grouped_tensor_to_grid_2d(T_grouped, n)
+u_grid_dense_grouped = grouped_vector_to_grid_2d(u_grouped, n)
 
 # GROUPED TN TIME EVOLUTION
-mps = copy(mps0)
-for _ in 1:steps
-    mps = apply(A_mpo, mps; alg="naive", cutoff=1e-12, maxdim=128)
-end
+mps = evolve_mps_with_mpo(mps0, A_mpo, steps; cutoff=1e-12, maxdim=128)
 
 u_grid_tn = grouped_mps_to_grid_2d(mps, sites2d)
 

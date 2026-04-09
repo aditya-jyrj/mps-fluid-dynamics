@@ -120,6 +120,15 @@ function matrix_to_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-12)
     return MPO(T, sites; cutoff=cutoff)
 end
 
+# functionally useless but just for clarity
+function grouped_mps_to_vector(mps::MPS, sites::Vector{<:Index})
+    return mps_to_vector(mps, sites)
+end
+
+function grouped_vector_to_mps(v::AbstractVector, sites::Vector{<:Index}; cutoff=1e-10)
+    return vector_to_mps(v, sites; cutoff=cutoff)
+end
+
 # ============================
 # GROUPED 2D BASIS HELPERS
 # ============================
@@ -177,14 +186,6 @@ end
 
 # -------------- GROUPED --> GRID -------------- 
 
-# function bits_msb_to_int(bits::AbstractVector{<:Integer})
-#     x = 0
-#     for b in bits
-#         x = 2 * x + b
-#     end
-#     return x
-# end
-
 function grouped_tensor_to_grid_2d(T::AbstractArray, n::Int)
     ndims(T) == 2 * n || throw(ArgumentError("Tensor must have 2n dimensions"))
     all(size(T, k) == 2 for k in 1:2*n) || throw(ArgumentError("Each tensor dimension must be 2"))
@@ -212,9 +213,16 @@ function grouped_mps_to_grid_2d(mps::MPS, sites::Vector{<:Index})
     iseven(nsites) || throw(ArgumentError("Need an even number of sites for grouped 2D QTT"))
     n = nsites ÷ 2
 
-    Tvec = mps_to_vector(mps, sites)
+    Tvec = grouped_mps_to_vector(mps, sites)
     T = reshape(Tvec, ntuple(_ -> 2, 2 * n)...)
 
+    return grouped_tensor_to_grid_2d(T, n)
+end
+
+function grouped_vector_to_grid_2d(v::AbstractVector, n::Int)
+    N = 2^n
+    length(v) == N^2 || throw(ArgumentError("Expected vector of length $(N^2)"))
+    T = reshape(v, ntuple(_ -> 2, 2n)...)
     return grouped_tensor_to_grid_2d(T, n)
 end
 
@@ -298,6 +306,8 @@ function timestep_mpo_1d(sites::Vector{<:Index}, cfl::Float64)
 end
 
 function tensor_product_mpo(A::MPO, B::MPO, sites::Vector{<:Index})
+    # Concatenate two MPO chains acting on contiguous grouped site blocks,
+    # representing the tensor-product operator A ⊗ B.
     NA = length(A)
     NB = length(B)
 
