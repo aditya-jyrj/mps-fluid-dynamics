@@ -119,6 +119,31 @@ function site_matrix_to_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e
     return MPO(T, sites; cutoff=cutoff)
 end
 
+function standard_to_qtt_permutation_2d(n::Int)
+    # generates an orthogonal matrix that transforms between standard ordering and qtt-ordered matrices
+    N = 2^n
+    M = N^2
+    P = zeros(Float64, M, M)
+
+    for j in 1:M
+        e_std = zeros(Float64, M)
+        e_std[j] = 1.0
+
+        # standard vector -> grid -> qtt vector
+        u_grid = standard_vector_to_grid(e_std, n)
+        e_qtt = grid_to_qtt_vector_2d(u_grid, n)
+
+        P[:, j] = e_qtt
+    end
+
+    return P
+end
+
+function standard_to_qtt_matrix_2d(A::AbstractMatrix, n::Int)
+    P = standard_to_qtt_permutation_2d(n)
+    return P * A * transpose(P)
+end
+
 # ============================
 # GROUPED 2D BASIS HELPERS
 # ============================
