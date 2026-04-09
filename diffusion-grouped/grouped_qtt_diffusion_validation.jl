@@ -1,6 +1,6 @@
 include("utils.jl")
 
-n = 2
+n = 6
 cfl = 0.1
 
 steps = 20
@@ -11,18 +11,20 @@ Ny = 2^n
 x = range(0, 1, length=Nx+1)[1:end-1]
 y = range(0, 1, length=Ny+1)[1:end-1]
 
-u0 = [sin(2π * xi) * sin(2π * yj) for xi in x, yj in y]
+u0 = [exp(-50*((xi-0.5)^2 + (yj-0.5)^2)) for xi in x, yj in y]
 
 sites1d = siteinds("S=1/2", n)
 sites2d = siteinds("S=1/2", 2n)
 
+cutoff = 1e-20
+maxdim = 1000
 
 # ==========================
 # CHECK STATE REPRESENTATION
 # ==========================
 
 # GRID vs GRID -> MPS -> GRID
-mps0 = grid_to_grouped_mps_2d(u0, sites2d)
+mps0 = grid_to_grouped_mps_2d(u0, sites2d; cutoff=cutoff)
 u0_back = grouped_mps_to_grid_2d(mps0, sites2d)
 println("Grouped MPS reconstruction error = ", norm(u0 - u0_back))
 
@@ -74,7 +76,7 @@ end
 u_grid_dense_grouped = grouped_vector_to_grid_2d(u_grouped, n)
 
 # GROUPED TN TIME EVOLUTION
-mps = evolve_mps_with_mpo(mps0, A_mpo, steps; cutoff=1e-12, maxdim=128)
+mps = evolve_mps_with_mpo(mps0, A_mpo, steps; cutoff=cutoff, maxdim=maxdim)
 
 u_grid_tn = grouped_mps_to_grid_2d(mps, sites2d)
 
