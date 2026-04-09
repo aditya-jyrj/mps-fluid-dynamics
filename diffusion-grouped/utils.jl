@@ -1,6 +1,21 @@
 using ITensors, ITensorMPS
 using LinearAlgebra, Printf
 
+# ===========
+# DEFINITIONS
+# ===========
+
+
+# n: determines the system size, Nx = Ny = 2^n
+
+# GRID: a matrix u indexed simply by u[i_x, i_y]
+# STANDARD VECTOR: 1D vector of length Nx * Ny = 2^(2n) (u[1,1], u[2,1], ... u[Nx, 1], u[1,2], u[2,2], ... u[Nx, 2], ... u[Nx, Ny])
+
+# GROUPED TENSOR: rank-2n tensor T where each dimension has size 2. represented by T[x1, x2, ... xn, y1, ... yn], where each index is 0 or 1
+# GROUPED MPS: an MPS with 2n sites of physical dimension 2, ordered like [x1] [x2] ... [xn] [y1] ... [yn]
+# GROUPED VECTOR: 1D vector of length Nx * Ny obtained from flattening grouped tensor or converting grouped MPS
+
+
 # =============
 # PDE OPERATORS
 # =============
@@ -58,14 +73,17 @@ end
 # GENERIC DENSE <-> TN CONVERSIONS
 # ================================
 
-function mps_to_dense_vector(mps::MPS, sites::Vector{<:Index})
+# Note: these functions return a vector in the ordering defined by `sites`
+#       so a group-ordered MPS will be converted to a group-ordered vector
+
+function mps_to_vector(mps::MPS, sites::Vector{<:Index})
     T = prod(mps) # contract entire mps
     C = combiner(reverse(sites)...) # reverse site ordering, then combine all into one index
     Tc = T * C
     return Array(Tc, combinedind(C))
 end
 
-function dense_vector_to_mps(v::AbstractVector, sites::Vector{<:Index}; cutoff=1e-10)
+function vector_to_mps(v::AbstractVector, sites::Vector{<:Index}; cutoff=1e-10)
     n = length(sites)
     length(v) == 2^n || throw(ArgumentError("Expected vector of length $(2^n), got $(length(v))"))
 
@@ -75,7 +93,7 @@ function dense_vector_to_mps(v::AbstractVector, sites::Vector{<:Index}; cutoff=1
 end
 
 
-function mpo_to_dense_matrix(M::MPO, sites::Vector{<:Index})
+function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
     T = prod(M)
     
     # REVERSE the sites so sites[n] varies fastest (Julia follows column-major convention unlike Python)
@@ -87,7 +105,7 @@ function mpo_to_dense_matrix(M::MPO, sites::Vector{<:Index})
 end
 
 
-function dense_matrix_to_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-12)
+function matrix_to_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-12)
     n = length(sites)
     N = 2^n
     size(A) == (N, N) || throw(ArgumentError("Expected $(N)×$(N) matrix, got $(size(A))"))
@@ -103,10 +121,10 @@ function dense_matrix_to_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1
 end
 
 # ============================
-# INTERLEAVED 2D BASIS HELPERS
+# GROUPED 2D BASIS HELPERS
 # ============================
 
-# -------------- GRID --> INTERLEAVED -------------- 
+# -------------- GRID --> GROUPED -------------- 
 
 function int_to_bits_msb(k::Int, nbits::Int)
     # converts numbers to binary digits with most significant bit coming first
@@ -119,21 +137,12 @@ function int_to_bits_msb(k::Int, nbits::Int)
     return reverse(ds) 
 end
 
-function interleave_bits(xbits::Vector{Int}, ybits::Vector{Int})
-    # takes in an input x bitvector and y bitvector and interleaves them
-    # by creating an output vector of length 2n and filling odd (2k-1) indices with x and even (2k) with y
-
-    n = length(xbits)
-    length(ybits) == n || throw(ArgumentError("xbits and ybits must have same length"))
-    out = Vector{Int}(undef, 2 * n)
-    for k in 1:n
-        out[2k - 1] = xbits[k]
-        out[2k]     = ybits[k]
-    end
-    return out
+function group_bits(xbits::Vector{Int}, ybits::Vector{Int})
+    length(xbits) == length(ybits) || throw(ArgumentError("xbits and ybits must have same length"))
+    return vcat(xbits, ybits)
 end
 
-function grid_to_interleaved_tensor_2d(u::AbstractMatrix, n::Int)
+function grid_to_grouped_tensor_2d(u::AbstractMatrix, n::Int)
     Nx, Ny = size(u)
 
     Nx == 2^n || throw(ArgumentError("Expected Nx = 2^n = $(2^n), got Nx = $Nx"))
@@ -141,12 +150,12 @@ function grid_to_interleaved_tensor_2d(u::AbstractMatrix, n::Int)
 
     T = zeros(eltype(u), ntuple(_ -> 2, 2 * n)) # rank-2n tensor, each dimension has size 2. each element is 0 of same type as u
 
-    # index through all the x and y indices, converting both to binary and interweaving them
+    # index through all the x and y indices, converting both to binary and concatenating
     for ix in 0:Nx-1
         xbits = int_to_bits_msb(ix, n)
         for iy in 0:Ny-1
             ybits = int_to_bits_msb(iy, n)
-            bits = interleave_bits(xbits, ybits)
+            bits = group_bits(xbits, ybits)
 
             inds = Tuple(b + 1 for b in bits) # increment everything by 1 since julia is 1-indexed
             T[inds...] = u[ix + 1, iy + 1]
@@ -156,17 +165,17 @@ function grid_to_interleaved_tensor_2d(u::AbstractMatrix, n::Int)
     return T
 end
 
-function grid_to_interleaved_mps_2d(u::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-10)
+function grid_to_grouped_mps_2d(u::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-10)
     nsites = length(sites) # nsites is total number of bits, ie num x bits + num y bits
-    iseven(nsites) || throw(ArgumentError("Need an even number of sites for interleaved 2D QTT"))
+    iseven(nsites) || throw(ArgumentError("Need an even number of sites for grouped 2D QTT"))
     n = nsites ÷ 2 # ÷ returns integer, / returns float. this is the number of bits per dimension
 
-    T = grid_to_interleaved_tensor_2d(u, n)
+    T = grid_to_grouped_tensor_2d(u, n)
     IT = ITensor(T, reverse(sites)...)
     return MPS(IT, sites; cutoff=cutoff)
 end
 
-# -------------- INTERLEAVED --> GRID -------------- 
+# -------------- GROUPED --> GRID -------------- 
 
 # function bits_msb_to_int(bits::AbstractVector{<:Integer})
 #     x = 0
@@ -176,7 +185,7 @@ end
 #     return x
 # end
 
-function interleaved_tensor_to_grid_2d(T::AbstractArray, n::Int)
+function grouped_tensor_to_grid_2d(T::AbstractArray, n::Int)
     ndims(T) == 2 * n || throw(ArgumentError("Tensor must have 2n dimensions"))
     all(size(T, k) == 2 for k in 1:2*n) || throw(ArgumentError("Each tensor dimension must be 2"))
 
@@ -188,7 +197,7 @@ function interleaved_tensor_to_grid_2d(T::AbstractArray, n::Int)
         xbits = int_to_bits_msb(ix, n)
         for iy in 0:Ny-1
             ybits = int_to_bits_msb(iy, n)
-            bits = interleave_bits(xbits, ybits)
+            bits = group_bits(xbits, ybits)
 
             inds = Tuple(b + 1 for b in bits)
             u[ix + 1, iy + 1] = T[inds...]
@@ -198,24 +207,24 @@ function interleaved_tensor_to_grid_2d(T::AbstractArray, n::Int)
     return u
 end
 
-function interleaved_mps_to_grid_2d(mps::MPS, sites::Vector{<:Index})
+function grouped_mps_to_grid_2d(mps::MPS, sites::Vector{<:Index})
     nsites = length(sites)
-    iseven(nsites) || throw(ArgumentError("Need an even number of sites for interleaved 2D QTT"))
+    iseven(nsites) || throw(ArgumentError("Need an even number of sites for grouped 2D QTT"))
     n = nsites ÷ 2
 
-    Tvec = mps_to_dense_vector(mps, sites)
+    Tvec = mps_to_vector(mps, sites)
     T = reshape(Tvec, ntuple(_ -> 2, 2 * n)...)
 
-    return interleaved_tensor_to_grid_2d(T, n)
+    return grouped_tensor_to_grid_2d(T, n)
 end
 
-# -------------- STANDARD VECTORS <-> INTERLEAVED VECTORS -------------- 
+# -------------- STANDARD VECTORS <-> GROUPED VECTORS -------------- 
 function grid_to_standard_vector_2d(u::AbstractMatrix)
     return reshape(u, :)
 end
 
-function grid_to_interleaved_vector_2d(u::AbstractMatrix, n::Int)
-    T = grid_to_interleaved_tensor_2d(u, n)
+function grid_to_grouped_vector_2d(u::AbstractMatrix, n::Int)
+    T = grid_to_grouped_tensor_2d(u, n)
     return reshape(T, :)
 end
 
@@ -230,70 +239,12 @@ end
 # 1D ANALYTICAL MPO CONSTRUCTION
 # ==============================
 
-# The Shift Plus (S_+) operator in QTT format using block-matrix notation
-function shift_plus_mpo_1d(sites::Vector{<:Index})
-    n = length(sites)
-    M = MPO(sites)
-    
-    # Create the internal bond (link) indices, dimension 2
-    links = [Index(2, "Link,l=$i") for i in 1:n-1]
-    
-    # One-hot encoding: creates an ITensor with indices b (bL, bR) with a single 1 at position k (r, c)
-    onehot(b::Index, k::Int) = (T = ITensor(b); T[b=>k] = 1; T)
-    onehot(bL::Index, r::Int, bR::Index, c::Int) = (T = ITensor(bL,bR); T[bL=>r,bR=>c] = 1; T)
-
-    for i in 1:n
-        s = sites[i] # the physical dimension of the i-th site
-        
-        # Identity matrix
-        I_mat = op("Id", s) 
-        
-        # J = [[0, 1], [0, 0]] with the appropriate physical indices
-        J_mat = ITensor(s', s)
-        J_mat[s'=>1, s=>2] = 1.0 
-        
-        # J^T = [[0, 0], [1, 0]] with the appropriate physical indices
-        JT_mat = ITensor(s', s)
-        JT_mat[s'=>2, s=>1] = 1.0 
-        
-        # Place the physical indexed matrices at the corresponding link spots of our MPO
-        if i == 1 # First core: row vector [I, J]
-            r = links[1]
-            M[i] = I_mat * onehot(r, 1) + 
-                   J_mat * onehot(r, 2)
-        elseif i == n # Last core: column vector [J; J^T]
-            l = links[i-1]
-            M[i] = J_mat  * onehot(l, 1) + 
-                   JT_mat * onehot(l, 2)
-        else # Middle cores: 2x2 matrix [[I, J], [0, J^T]]
-            l = links[i-1]
-            r = links[i]
-            M[i] = I_mat  * onehot(l, 1, r, 1) + 
-                   J_mat  * onehot(l, 1, r, 2) + 
-                   # Note: The [2,1] element is 0, so we just omit it
-                   JT_mat * onehot(l, 2, r, 2)
-        end
-    end
-    return M
-end
-
-# The Shift Minus (S_-) operator in QTT format using block-matrix notation
-function shift_minus_mpo_1d(sites::Vector{<:Index})
-    # Swap the primed and unprimed indices to interchange the input and output legs (equivalent of transposing the matrix)
-    return swapprime(shift_plus_mpo_1d(sites), 0, 1)
-end
-
-# The MPO A = (1 - 2*cfl)I + cfl * (S_+ + S_-)
-function diffusion_mpo_1d(sites::Vector{<:Index}, cfl::Float64)
-    I_mat = MPO(sites, "Id")
-    return (1 - 2*cfl) * I_mat + cfl * (shift_plus_mpo_1d(sites) + shift_minus_mpo_1d(sites))
-end
 
 function laplacian_mpo_1d(sites::Vector{<:Index})
     n = length(sites)
-    M = MPO(sites)
-
     n >= 2 || throw(ArgumentError("Need at least 2 sites"))
+
+    M = MPO(sites)
     
     # Create the internal bond (link) indices, dimension 3
     links = [Index(3, "Link,l=$i") for i in 1:n-1]
@@ -346,6 +297,53 @@ function timestep_mpo_1d(sites::Vector{<:Index}, cfl::Float64)
     return I_mpo - cfl * L_mpo
 end
 
+function tensor_product_mpo(A::MPO, B::MPO, sites::Vector{<:Index})
+    NA = length(A)
+    NB = length(B)
+
+    length(sites) == NA + NB || throw(ArgumentError("Expected $(NA+NB) sites, got $(length(sites))"))
+
+    # allocate new MPO
+    M = MPO(sites)
+
+    # copy A cores
+    for i in 1:NA
+        M[i] = A[i]
+    end
+
+    # copy B cores
+    for j in 1:NB
+        M[NA + j] = B[j]
+    end
+
+    return M
+end
+
+function laplacian_mpo_2d(sites::Vector{<:Index})
+    nsites = length(sites)
+    iseven(nsites) || throw(ArgumentError("Need even number of sites"))
+    n = nsites ÷ 2
+
+    x_sites = sites[1:n]
+    y_sites = sites[n+1:2n]
+
+    Lx_1d = laplacian_mpo_1d(x_sites)
+    Ly_1d = laplacian_mpo_1d(y_sites)
+
+    Ix_1d = MPO(x_sites, "Id")
+    Iy_1d = MPO(y_sites, "Id")
+
+    LxIy = tensor_product_mpo(Lx_1d, Iy_1d, sites)
+    IxLy = tensor_product_mpo(Ix_1d, Ly_1d, sites)
+
+    return LxIy + IxLy
+end
+
+function timestep_mpo_2d(sites::Vector{<:Index}, cfl::Float64)
+    I_mpo = MPO(sites, "Id")
+    L = laplacian_mpo_2d(sites)
+    return I_mpo - cfl * L
+end
 
 # ==============
 # TIME EVOLUTION
