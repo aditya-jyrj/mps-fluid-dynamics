@@ -11,9 +11,9 @@ using LinearAlgebra, Printf
 # GRID: a matrix u indexed simply by u[i_x, i_y]
 # STANDARD VECTOR: 1D vector of length Nx * Ny = 2^(2n) (u[1,1], u[2,1], ... u[Nx, 1], u[1,2], u[2,2], ... u[Nx, 2], ... u[Nx, Ny])
 
-# GROUPED TENSOR: rank-2n tensor T where each dimension has size 2. represented by T[x1, x2, ... xn, y1, ... yn], where each index is 0 or 1
-# GROUPED MPS: an MPS with 2n sites of physical dimension 2, ordered like [x1] [x2] ... [xn] [y1] ... [yn]
-# GROUPED VECTOR: 1D vector of length Nx * Ny obtained from flattening grouped tensor or converting grouped MPS
+# QTT TENSOR: rank-2n tensor T where each dimension has size 2. represented by T[x1, x2, ... xn, y1, ... yn], where each index is 0 or 1
+# QTT MPS: an MPS with 2n sites of physical dimension 2, ordered like [x1] [x2] ... [xn] [y1] ... [yn]
+# QTT VECTOR: 1D vector of length Nx * Ny obtained from flattening grouped tensor or converting grouped MPS
 
 
 # =============
@@ -47,7 +47,7 @@ function laplacian_2d(Nx::Int, Ny::Int; bcx::Symbol=:dirichlet, bcy::Symbol=:dir
     Ix = Matrix(I, Nx, Nx)
     Iy = Matrix(I, Ny, Ny)
 
-    return kron(Lx, Iy) + kron(Ix, Ly)
+    return kron(Iy, Lx) + kron(Ly, Ix)
 end
 
 
@@ -64,7 +64,7 @@ function timestep_operator_2d(Nx::Int, Ny::Int, cflx::Float64, cfly::Float64;
     Ix = Matrix(I, Nx, Nx)
     Iy = Matrix(I, Ny, Ny)
 
-    return Matrix(I, Nx*Ny, Nx*Ny) - cflx * kron(Lx, Iy) - cfly * kron(Ix, Ly)
+    return Matrix(I, Nx*Ny, Nx*Ny) - cflx * kron(Iy, Lx) - cfly * kron(Ly, Ix)
 end
 
 
@@ -74,38 +74,37 @@ end
 # ================================
 
 # Note: these functions return a vector in the ordering defined by `sites`
-#       so a group-ordered MPS will be converted to a group-ordered vector
 
-function mps_to_vector(mps::MPS, sites::Vector{<:Index})
+function mps_to_site_vector(mps::MPS, sites::Vector{<:Index})
     T = prod(mps) # contract entire mps
-    C = combiner(reverse(sites)...) # reverse site ordering, then combine all into one index
+    C = combiner(sites...) # combine all into one index
     Tc = T * C
     return Array(Tc, combinedind(C))
 end
 
-function vector_to_mps(v::AbstractVector, sites::Vector{<:Index}; cutoff=1e-10)
+function site_vector_to_mps(v::AbstractVector, sites::Vector{<:Index}; cutoff=1e-10)
     n = length(sites)
     length(v) == 2^n || throw(ArgumentError("Expected vector of length $(2^n), got $(length(v))"))
 
     T = reshape(v, ntuple(_ -> 2, n)...)
-    IT = ITensor(T, reverse(sites)...)
+    IT = ITensor(T, sites...)
     return MPS(IT, sites; cutoff=cutoff)
 end
 
 
-function mpo_to_matrix(M::MPO, sites::Vector{<:Index})
+function mpo_to_site_matrix(M::MPO, sites::Vector{<:Index})
     T = prod(M)
     
-    # REVERSE the sites so sites[n] varies fastest (Julia follows column-major convention unlike Python)
-    C_row = combiner(reverse(prime.(sites))...)
-    C_col = combiner(reverse(sites)...)
+
+    C_row = combiner(prime.(sites)...)
+    C_col = combiner(sites...)
     
     Tc = T * C_row * C_col
     return Array(Tc, combinedind(C_row), combinedind(C_col))
 end
 
 
-function matrix_to_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-12)
+function site_matrix_to_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-12)
     n = length(sites)
     N = 2^n
     size(A) == (N, N) || throw(ArgumentError("Expected $(N)×$(N) matrix, got $(size(A))"))
@@ -113,27 +112,30 @@ function matrix_to_mpo(A::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-12)
     # reshape matrix into tensor with row bits and column bits
     A_tensor = reshape(A, ntuple(_ -> 2, 2 * n)...)
 
-    row_inds = reverse(prime.(sites))
-    col_inds = reverse(sites)
+    row_inds = prime.(sites)
+    col_inds = sites
 
     T = ITensor(A_tensor, row_inds..., col_inds...)
     return MPO(T, sites; cutoff=cutoff)
-end
-
-# functionally useless but just for clarity
-function grouped_mps_to_vector(mps::MPS, sites::Vector{<:Index})
-    return mps_to_vector(mps, sites)
-end
-
-function grouped_vector_to_mps(v::AbstractVector, sites::Vector{<:Index}; cutoff=1e-10)
-    return vector_to_mps(v, sites; cutoff=cutoff)
 end
 
 # ============================
 # GROUPED 2D BASIS HELPERS
 # ============================
 
-# -------------- GRID --> GROUPED -------------- 
+# GRID
+
+function grid_to_standard_vector(u::AbstractMatrix)
+    return reshape(u, :)
+end
+
+function standard_vector_to_grid(v::AbstractVector, n::Int)
+    N = 2^n
+    length(v) == N^2 || throw(ArgumentError("Expected vector of length $(N^2)"))
+    return reshape(v, N, N)
+end
+
+# -------------- QTT CONVERSIONS -------------- 
 
 function int_to_bits_msb(k::Int, nbits::Int)
     # converts numbers to binary digits with most significant bit coming first
@@ -151,7 +153,9 @@ function group_bits(xbits::Vector{Int}, ybits::Vector{Int})
     return vcat(xbits, ybits)
 end
 
-function grid_to_grouped_tensor_2d(u::AbstractMatrix, n::Int)
+# GRID <-> QTT TENSOR
+
+function grid_to_qtt_tensor_2d(u::AbstractMatrix, n::Int)
     Nx, Ny = size(u)
 
     Nx == 2^n || throw(ArgumentError("Expected Nx = 2^n = $(2^n), got Nx = $Nx"))
@@ -174,19 +178,7 @@ function grid_to_grouped_tensor_2d(u::AbstractMatrix, n::Int)
     return T
 end
 
-function grid_to_grouped_mps_2d(u::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-10)
-    nsites = length(sites) # nsites is total number of bits, ie num x bits + num y bits
-    iseven(nsites) || throw(ArgumentError("Need an even number of sites for grouped 2D QTT"))
-    n = nsites ÷ 2 # ÷ returns integer, / returns float. this is the number of bits per dimension
-
-    T = grid_to_grouped_tensor_2d(u, n)
-    IT = ITensor(T, reverse(sites)...)
-    return MPS(IT, sites; cutoff=cutoff)
-end
-
-# -------------- GROUPED --> GRID -------------- 
-
-function grouped_tensor_to_grid_2d(T::AbstractArray, n::Int)
+function qtt_tensor_to_grid_2d(T::AbstractArray, n::Int)
     ndims(T) == 2 * n || throw(ArgumentError("Tensor must have 2n dimensions"))
     all(size(T, k) == 2 for k in 1:2*n) || throw(ArgumentError("Each tensor dimension must be 2"))
 
@@ -208,39 +200,44 @@ function grouped_tensor_to_grid_2d(T::AbstractArray, n::Int)
     return u
 end
 
-function grouped_mps_to_grid_2d(mps::MPS, sites::Vector{<:Index})
+# GRID <-> QTT MPS
+
+function grid_to_qtt_mps_2d(u::AbstractMatrix, sites::Vector{<:Index}; cutoff=1e-10)
+    nsites = length(sites) # nsites is total number of bits, ie num x bits + num y bits
+    iseven(nsites) || throw(ArgumentError("Need an even number of sites for 2D QTT"))
+    n = nsites ÷ 2 # ÷ returns integer, / returns float. this is the number of bits per dimension
+
+    T = grid_to_qtt_tensor_2d(u, n)
+    IT = ITensor(T, sites...)
+    return MPS(IT, sites; cutoff=cutoff)
+end
+
+function qtt_mps_to_grid_2d(mps::MPS, sites::Vector{<:Index})
     nsites = length(sites)
-    iseven(nsites) || throw(ArgumentError("Need an even number of sites for grouped 2D QTT"))
+    iseven(nsites) || throw(ArgumentError("Need an even number of sites for 2D QTT"))
     n = nsites ÷ 2
 
-    Tvec = grouped_mps_to_vector(mps, sites)
+    Tvec = mps_to_site_vector(mps, sites)
     T = reshape(Tvec, ntuple(_ -> 2, 2 * n)...)
 
-    return grouped_tensor_to_grid_2d(T, n)
+    return qtt_tensor_to_grid_2d(T, n)
 end
 
-function grouped_vector_to_grid_2d(v::AbstractVector, n::Int)
-    N = 2^n
-    length(v) == N^2 || throw(ArgumentError("Expected vector of length $(N^2)"))
-    T = reshape(v, ntuple(_ -> 2, 2n)...)
-    return grouped_tensor_to_grid_2d(T, n)
-end
+# GRID <-> QTT VECTOR
 
-# -------------- STANDARD VECTORS <-> GROUPED VECTORS -------------- 
-function grid_to_standard_vector_2d(u::AbstractMatrix)
-    return reshape(u, :)
-end
-
-function grid_to_grouped_vector_2d(u::AbstractMatrix, n::Int)
-    T = grid_to_grouped_tensor_2d(u, n)
+function grid_to_qtt_vector_2d(u::AbstractMatrix, n::Int)
+    T = grid_to_qtt_tensor_2d(u, n)
     return reshape(T, :)
 end
 
-function standard_vector_to_grid_2d(v::AbstractVector, n::Int)
+
+function qtt_vector_to_grid_2d(v::AbstractVector, n::Int)
     N = 2^n
     length(v) == N^2 || throw(ArgumentError("Expected vector of length $(N^2)"))
-    return reshape(v, N, N)
+    T = reshape(v, ntuple(_ -> 2, 2n)...)
+    return qtt_tensor_to_grid_2d(T, n)
 end
+
 
 
 # ==============================
