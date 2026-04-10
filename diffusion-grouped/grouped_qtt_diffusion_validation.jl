@@ -47,9 +47,22 @@ A_mpo = timestep_mpo_2d(sites_2d, cfl)
 A_dense_std = timestep_operator_2d(Nx, Ny, cfl, cfl)
 A_dense_qtt = standard_to_qtt_matrix_2d(A_dense_std, n)
 
-A_from_mpo = mpo_to_site_matrix(A_mpo, sites_2d)
-println("Operator mismatch = ", norm(A_from_mpo - A_dense_qtt))
+# ==========================
+# OPERATOR ACTION CHECK
+# ==========================
+
+v = randn(Float64, Nx * Ny)
+
+w_dense = A_dense_qtt * v
+w_mpo = apply_mpo_to_site_vector(A_mpo, v, sites_2d;
+                                cutoff=cutoff, maxdim=maxdim)
+
+println("operator action error = ", norm(w_dense - w_mpo))
+println("relative operator action error = ",
+        norm(w_dense - w_mpo) / norm(w_dense))
 println()
+
+# =============
 
 # DENSE TIME EVOLUTION IN QTT/SITE ORDERING
 u0_qtt = grid_to_qtt_vector_2d(u0, n)

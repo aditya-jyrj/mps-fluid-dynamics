@@ -15,6 +15,12 @@ using LinearAlgebra, Printf
 # QTT MPS: an MPS with 2n sites of physical dimension 2, ordered like [x1] [x2] ... [xn] [y1] ... [yn]
 # QTT VECTOR: 1D vector of length Nx * Ny obtained from flattening grouped tensor or converting grouped MPS
 
+function apply_mpo_to_site_vector(A_mpo::MPO, v::AbstractVector, sites;
+                                 cutoff=1e-12, maxdim=1000)
+    mps = site_vector_to_mps(v, sites; cutoff=cutoff)
+    mps_out = apply(A_mpo, mps; alg="naive", cutoff=cutoff, maxdim=maxdim)
+    return mps_to_site_vector(mps_out, sites)
+end
 
 # =============
 # PDE OPERATORS

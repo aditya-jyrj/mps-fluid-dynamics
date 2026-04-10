@@ -5,9 +5,9 @@ using LinearAlgebra
 
 ITensors.disable_warn_order()
 
-n = 6
+n = 5
 cfl = 0.1
-steps = 3
+steps = 300
 cutoff = 1e-20
 maxdim = 1000
 
@@ -35,19 +35,31 @@ A_mpo = timestep_mpo_2d(sites2d, cfl)
 # Dense setup in QTT ordering
 u_qtt = grid_to_qtt_vector_2d(u0, n)
 A_dense_std = timestep_operator_2d(Nx, Ny, cfl, cfl)
+A_dense_qtt = standard_to_qtt_matrix_2d(A_dense_std, n)
 
-A_from_mpo = mpo_to_site_matrix(A_mpo, sites2d)
-P = standard_to_qtt_permutation_2d(n)
-A_dense_qtt = P * A_dense_std * transpose(P)
+# ==========================
+# OPERATOR ACTION CHECK
+# ==========================
 
-println("operator mismatch = ", norm(A_from_mpo - A_dense_qtt))
+v = randn(Float64, Nx * Ny)
+# pass a random vector and check that both operators evolve to the same result
+
+w_dense = A_dense_qtt * v
+w_mpo = apply_mpo_to_site_vector(A_mpo, v, sites2d;
+                                cutoff=cutoff, maxdim=maxdim)
+
+println("operator action error = ", norm(w_dense - w_mpo))
+println("relative operator action error = ",
+        norm(w_dense - w_mpo) / norm(w_dense))
+println()
 
 for step in 0:steps
     u_tn_grid = qtt_mps_to_grid_2d(mps, sites2d)
     u_dense_grid = qtt_vector_to_grid_2d(u_qtt, n)
 
+    bond_dim = maxlinkdim(mps)
     rel_err = norm(u_dense_grid - u_tn_grid) / norm(u_dense_grid)
-    println("step = $step, rel err = $rel_err")
+    println("step = $step, rel err = $rel_err, bond dim = $bond_dim")
 
     if step < steps
         mps = apply(A_mpo, mps; alg="naive", cutoff=cutoff, maxdim=maxdim)
