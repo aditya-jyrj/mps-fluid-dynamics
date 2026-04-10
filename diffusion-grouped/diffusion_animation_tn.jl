@@ -18,7 +18,8 @@ Ny = 2^n
 x = range(0, 1, length=Nx+1)[1:end-1]
 y = range(0, 1, length=Ny+1)[1:end-1]
 
-u0 = [exp(-50*((xi-0.5)^2 + (yj-0.5)^2)) for xi in x, yj in y]
+u0 = [((0.3 < xi < 0.7) && (0.3 < yj < 0.7)) ? 1.0 : 0.0
+      for xi in x, yj in y]
 
 sites2d = siteinds("S=1/2", 2n)
 
@@ -57,5 +58,5 @@ anim = @animate for step in 0:steps
     end
 end
 
-gif(anim, joinpath(@__DIR__, "diffusion_tn.gif"), fps=20)
+gif(anim, joinpath(@__DIR__, "diffusion_tn.gif"), fps=10)
 println("Saved animation to ", joinpath(@__DIR__, "diffusion_tn.gif"))
