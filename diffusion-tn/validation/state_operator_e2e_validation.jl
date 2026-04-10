@@ -2,6 +2,11 @@
 # CHECKING STATE REPRESENTATION
 # =============================
 
+# for cutoff = 1e-8
+# QTT MPS reconstruction error = 4.1580647940831685e-14
+# QTT state vector error = 4.158064794083163e-14
+
+# for cutoff = 1e-20
 # QTT MPS reconstruction error = 8.225612988129258e-15
 # QTT state vector error = 8.225612988129257e-15
 
@@ -11,6 +16,11 @@
 # CHECKING ACTION OF OPERATOR
 # ===========================
 
+# for cutoff = 1e-8
+# operator action error = 3.355639058845051e-13
+# relative operator action error = 1.6998007312165077e-14
+
+# for cutoff = 1e-20
 # operator action error = 3.530747963922594e-13
 # relative operator action error = 1.8128352598543243e-14
 
@@ -20,6 +30,19 @@
 # CHECK END-TO-END EVOLUTION
 # ==========================
 
+# for cutoff = 1e-8
+# QTT matrix vs TN error after 100 steps = 0.0021611478854407385
+# Relative QTT matrix vs TN error after 100 steps = 0.0006547990297435121
+# Max bond dim of mps after 100 steps = 4
+# Max bond dim of A_mpo = 4
+
+# for cutoff = 1e-20
+# QTT matrix vs TN error after 100 steps = 3.0892377693434355e-6
+# Relative QTT matrix vs TN error after 100 steps = 9.359979053911726e-7
+# Max bond dim of mps after 100 steps = 6
+# Max bond dim of A_mpo = 4
+
+# for cutoff = 1e-20
 # QTT matrix vs TN error after 100 steps = 3.518283956603718e-10
 # Relative QTT matrix vs TN error after 100 steps = 1.0659931866145545e-10
 # Max bond dim of mps after 100 steps = 8
@@ -38,8 +61,8 @@ function main()
         n = 5
         cfl = 0.1
         steps = 100
-        cutoff = 1e-20
-        maxdim = 1000
+        cutoff = 1e-12
+        maxdim = 128
 
         Nx = 2^n
         Ny = 2^n
