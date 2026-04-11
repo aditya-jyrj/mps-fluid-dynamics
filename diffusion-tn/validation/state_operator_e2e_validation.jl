@@ -36,7 +36,7 @@
 # Max bond dim of mps after 100 steps = 4
 # Max bond dim of A_mpo = 4
 
-# for cutoff = 1e-20
+# for cutoff = 1e-12
 # QTT matrix vs TN error after 100 steps = 3.0892377693434355e-6
 # Relative QTT matrix vs TN error after 100 steps = 9.359979053911726e-7
 # Max bond dim of mps after 100 steps = 6

@@ -6,14 +6,14 @@ using ProgressMeter
 
 function main()
     ITensors.disable_warn_order()
-    outfile = joinpath(@__DIR__, "matrix_vs_tn_memory.csv")
+    outfile = joinpath(@__DIR__, "matrix_vs_tn_memory_n=7.csv")
 
     ns = 4:10
-    mat_max_n = 6
+    mat_max_n = 7
     cfl = 0.1
     steps = 100
 
-    cutoff = 1e-8
+    cutoff = 1e-12
     maxdim = 128
 
 
@@ -33,10 +33,9 @@ function main()
     A_mpo = timestep_mpo_2d(sites_2d, cfl)
     apply(A_mpo, mps; alg="naive", cutoff=cutoff, maxdim=maxdim)
 
-    u_qtt = grid_to_qtt_vector(u0, n_warm)
-    A_mat_std = timestep_operator_2d(Nx, Ny, cfl, cfl)
-    A_mat_qtt = standard_to_qtt_matrix(A_mat_std, n_warm)
-    A_mat_qtt * u_qtt
+    u_vec = grid_to_standard_vector(u0)
+    A_mat = timestep_operator_2d(Nx, Ny, cfl, cfl)
+    A_mat * u_vec
 
     # =============
 
@@ -68,16 +67,14 @@ function main()
 
         use_mat = (n <= mat_max_n)
         if use_mat
-            # matrix reference in QTT / site ordering
-            u_qtt = grid_to_qtt_vector(u0, n)
+            u_vec = grid_to_standard_vector(u0)
             m_mat_build = @allocated begin
-                A_mat_std = timestep_operator_2d(Nx, Ny, cfl, cfl)
-                A_mat_qtt = standard_to_qtt_matrix(A_mat_std, n)
+                A_mat = timestep_operator_2d(Nx, Ny, cfl, cfl)
             end
             m_mat_build = m_mat_build / 1024^2
 
             # matrix smoke run
-            A_mat_qtt * u_qtt
+            A_mat * u_vec
         end
 
         # TN smoke run
@@ -88,7 +85,7 @@ function main()
 
             if use_mat
                 # matrix step
-                m_mat = @allocated u_qtt = A_mat_qtt * u_qtt
+                m_mat = @allocated u_vec = A_mat * u_vec
                 m_mat = m_mat / 1024^2
             end
 
